@@ -1,7 +1,11 @@
 /* Keeps a copy of the app on the phone so it opens without internet.
    Online it always fetches the newest files first (3 s limit), so an upload to the site shows up on the next launch. */
-const CACHE = "story-studio-v1";
-const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
+const CACHE = "story-studio-v2";
+const FILES = [
+  "./", "./index.html", "./stories.html", "./fotolajm.html", "./videolajm.html",
+  "./common.css", "./common.js", "./fonts.css", "./logo.png", "./foto-overlay.webp",
+  "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
+];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

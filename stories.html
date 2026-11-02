@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="sq">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Albanian Post Story Studio</title>
+<!-- installable as an iPhone / Android home-screen app that works offline -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="AP Studio">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#d0181f">
+<link rel="stylesheet" href="fonts.css">
+<style>
+/* Layout: phone-shaped live preview on the left, one column of controls on the right; stacks on narrow screens */
+:root{
+  --bg:#efedea;--panel:#ffffff;--fg:#1b1b1d;--muted:#6b6862;--line:#dcd8d2;--field:#f7f6f3;
+  --red:#d0181f;--red-ink:#ffffff;
+  --ui:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --display:"Noto Serif Display",Georgia,serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141415;--panel:#1e1e20;--fg:#eeece8;--muted:#a19d96;--line:#343437;--field:#262628;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141415;--panel:#1e1e20;--fg:#eeece8;--muted:#a19d96;--line:#343437;--field:#262628;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);font-size:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:max(20px,env(safe-area-inset-top,0px));padding-bottom:max(40px,env(safe-area-inset-bottom,0px))}
+.app{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:28px;align-items:start}
+@media (max-width:820px){.app{grid-template-columns:minmax(0,1fr)}}
+header{max-width:1100px;margin:0 auto 18px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header .mark{font-family:"UnifrakturMaguntia",serif;font-size:28px;line-height:1}
+header .sub{color:var(--muted);font-size:13px;letter-spacing:.04em;text-transform:uppercase}
+.stage{display:flex;flex-direction:column;align-items:center;gap:10px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 16px)}
+@media (max-width:820px){.stage{position:static}}
+.frame{position:relative;height:min(78vh,860px);aspect-ratio:9/16;max-width:100%;border-radius:18px;overflow:hidden;background:#2a2b2e;touch-action:pan-y}
+/* the page only stops scrolling under a finger once there is a photo to drag */
+.frame.has-photo{touch-action:none}
+/* on phones the preview stays short enough to leave room around it for scrolling to the controls */
+@media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(62vh*9/16));width:min(100%,420px,calc(62svh*9/16))}}
+.frame canvas{width:100%;height:100%;display:block;cursor:grab}
+.frame canvas.drag{cursor:grabbing}
+.guides{position:absolute;inset:0;pointer-events:none}
+.guides i{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 6px,transparent 6px 12px);border:1px dashed rgba(255,255,255,.35)}
+.guides span{position:absolute;left:8px;font-size:11px;color:rgba(255,255,255,.7);font-family:var(--ui)}
+.hint{color:var(--muted);font-size:12px;text-align:center}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:18px}
+.group{display:flex;flex-direction:column;gap:8px}
+.group>label,.lab{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+input[type=text],textarea{width:100%;font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+textarea{resize:vertical;min-height:84px;line-height:1.35}
+input:focus-visible,textarea:focus-visible,button:focus-visible,.drop:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:12px;font-weight:600;letter-spacing:.03em;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:999px;padding:5px 10px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--red);border-color:var(--red);color:var(--red-ink)}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--muted);cursor:pointer;font-size:13px}
+.drop b{color:var(--fg);font-weight:600}
+.row{display:flex;align-items:center;gap:10px}
+.row input[type=range]{flex:1;accent-color:var(--red)}
+.row output{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.toggle input{accent-color:var(--red);width:16px;height:16px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:600;border-radius:9px;padding:11px 16px;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--fg)}
+.btn.primary{background:var(--red);border-color:var(--red);color:var(--red-ink);flex:1}
+.small{font-size:12px;color:var(--muted)}
+.linkbtn{font:inherit;font-size:12px;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer;padding:0}
+.result{display:flex;flex-direction:column;gap:8px;align-items:center}
+.result img{width:180px;border-radius:10px;border:1px solid var(--line)}
+.status{font-size:13px;min-height:1em}
+.back{font-size:14px;font-weight:600;color:var(--fg);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;align-self:center}
+.inapp{font-size:13px;border:1px solid var(--red);border-radius:9px;padding:10px 12px}
+/* finger-sized targets on touch screens */
+@media (pointer:coarse){
+  .chip{padding:10px 14px;font-size:13px}
+  .toggle{min-height:40px}.toggle input{width:22px;height:22px}
+  .row input[type=range]{height:32px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Story Studio · 1080 × 1920</span></header>
+
+<!-- shown until the script starts: file previews (Files, AirDrop, WhatsApp, Mail) don't run JavaScript -->
+<div class="inapp" id="nojs" style="max-width:1100px;margin:0 auto 18px">
+  <b>Kjo faqe nuk po punon këtu.</b> Je duke e parë si pamje paraprake (Files, WhatsApp, Mail…), ku fotot dhe pamja e story-t nuk funksionojnë.
+  Në iPhone hape nga një <b>link</b> (adresë interneti) në <b>Safari</b> ose Chrome.
+</div>
+
+<div class="app">
+  <div class="stage">
+    <div class="frame" id="frame">
+      <canvas id="cv" width="1080" height="1920" aria-label="Pamja e story-t"></canvas>
+    </div>
+    <div class="hint">Tërhiqe foton për ta lëvizur; me dy gishta e zmadhon.</div>
+  </div>
+
+  <form class="panel" id="form" autocomplete="off">
+    <div class="group">
+      <span class="lab">Fotoja</span>
+      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko foton</b><br>ose tërhiqe këtu, ose ngjite (Ctrl/Cmd+V)</div>
+      <input type="file" id="file" accept="image/*" hidden>
+      <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
+      <div class="row"><span class="small">Errësimi</span><input type="range" id="shade" min="0" max="100" step="1" value="85"><output id="shadeOut">85%</output></div>
+    </div>
+
+    <div class="group">
+      <span class="lab">Kategoria</span>
+      <div class="chips" id="catChips"></div>
+      <label for="tag" style="margin-top:6px">Rubrika</label>
+      <div class="chips" id="chips"></div>
+      <input type="text" id="tag" value="KOSOVË" maxlength="30">
+    </div>
+
+    <div class="group">
+      <label for="title">Titulli</label>
+      <textarea id="title" maxlength="140">Flamuri i UÇK-së valon në objektin e Odës së Mjekëve</textarea>
+      <div class="row"><span class="small">Madhësia</span><input type="range" id="size" min="70" max="150" step="1" value="112"><output id="sizeOut">112</output></div>
+    </div>
+
+    <div class="group">
+      <label for="sub">Nëntitulli <span style="text-transform:none;font-weight:400">(opsional)</span></label>
+      <input type="text" id="sub" value="" maxlength="120" placeholder="Një fjali shpjeguese">
+    </div>
+
+    <div class="group">
+      <span class="lab">Opsione</span>
+      <label class="toggle"><input type="checkbox" id="cta" checked> Lë vend për link-sticker të Instagramit</label>
+      <label class="toggle"><input type="checkbox" id="dateOn" checked> Shfaq datën lart djathtas</label>
+      <input type="text" id="date" maxlength="40" aria-label="Data">
+    </div>
+
+    <div class="group">
+      <span class="lab">Animacioni</span>
+      <div class="chips" id="durChips"></div>
+      <span class="small">Lëvizja e fotos</span>
+      <div class="chips" id="motionChips"></div>
+      <div class="small" id="panHint" hidden>Fotoja është në skaj nga ana ku lëviz. Tërhiqe pak në anën tjetër që pan-i të ketë vend.</div>
+      <div class="btns"><button type="button" class="btn" id="play">▶ Shiko animacionin</button></div>
+    </div>
+
+    <div class="inapp" id="inapp" hidden>Je brenda Instagramit ose Facebook-ut, ku skedarët nuk ruhen dot. Hape këtë faqe në Safari ose Chrome (menyja ⋯ → “Hap në shfletues”).</div>
+    <div class="btns"><button type="button" class="btn primary" id="saveVid">Ruaj video</button><button type="submit" class="btn" id="save">Ruaj PNG</button></div>
+    <div class="status" id="status" role="status"></div>
+    <div class="result" id="result" hidden>
+      <img id="resultImg" alt="Story i gatshëm" hidden>
+      <video id="resultVid" controls muted playsinline loop hidden style="width:180px;border-radius:10px;border:1px solid var(--line)"></video>
+      <button type="button" class="btn primary" id="shareBtn" hidden>Ruaj në telefon</button>
+      <div class="small" id="resultHint" style="text-align:center">Kliko djathtas ose mbaje shtypur → “Ruaj”.</div>
+    </div>
+  </form>
+</div>
+
+<script>
+const W=1080,H=1920;
+const $=id=>document.getElementById(id);
+/* iOS 15 and older have no roundRect on canvas */
+if(!CanvasRenderingContext2D.prototype.roundRect)CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+  r=Math.min(+r||0,w/2,h/2);this.moveTo(x+r,y);this.arcTo(x+w,y,x+w,y+h,r);this.arcTo(x+w,y+h,x,y+h,r);
+  this.arcTo(x,y+h,x,y,r);this.arcTo(x,y,x+w,y,r);this.closePath()};
+const PHONE=matchMedia("(pointer:coarse)").matches;
+/* Instagram / Facebook / TikTok in-app browsers can't save files */
+const INAPP=/Instagram|FBAN|FBAV|FB_IAB|TikTok|musical_ly|Line\//i.test(navigator.userAgent);
+const cv=$("cv"),ctx=cv.getContext("2d");
+const S={photo:null,logo:null,ox:0,oy:0};
+/* each category owns one colour: tag box, CTA underline. ink = text colour on the box */
+const CATS={
+  lajme:{name:"Lajme",color:"#d0181f",ink:"#ffffff",outline:"#CC2424",subs:["LAJM I FUNDIT","KOSOVË","SHQIPËRI","MAQEDONI","BOTË","EKSKLUZIVE","OPINION"]},
+  sport:{name:"Sport",color:"#fadb3c",ink:"#ffffff",subs:["SPORT"]},
+  kulture:{name:"Kulturë",color:"#328dd1",ink:"#ffffff",subs:["KULTURË"]}
+};
+S.cat="lajme";
+const cat=()=>CATS[S.cat];
+
+function store(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}
+function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
+
+const chips=$("chips"),catChips=$("catChips");
+function renderSubs(){
+  chips.innerHTML="";
+  cat().subs.forEach(t=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=t;
+    b.onclick=()=>{$("tag").value=t;sync()};chips.appendChild(b)});
+}
+Object.entries(CATS).forEach(([k,c])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=c.name;b.dataset.k=k;
+  b.onclick=()=>{S.cat=k;renderSubs();$("tag").value=c.subs[0];sync()};catChips.appendChild(b)});
+
+function wrap(text,maxW){
+  const out=[];
+  text.split(/\n/).forEach(par=>{
+    const words=par.trim().split(/\s+/).filter(Boolean);let line="";
+    words.forEach(w=>{const t=line?line+" "+w:w;
+      if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t});
+    if(line)out.push(line);
+  });
+  return out;
+}
+
+const DURS=[5,7,10];S.dur=7;
+const clamp=v=>Math.max(0,Math.min(1,v));
+/* quint ease-out for entrances, sine in-out for the photo zoom */
+const ease=v=>1-Math.pow(1-clamp(v),5);
+const inout=v=>(1-Math.cos(Math.PI*clamp(v)))/2;
+const prog=(t,start,len)=>t===Infinity?1:ease((t-start)/len);
+
+function drawPhoto(t){
+  if(!S.photo){
+    ctx.fillStyle="#3b3d41";ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#56585d";ctx.font='500 44px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
+    ctx.fillText("Ngarko një foto",W/2,H*0.36);ctx.textAlign="left";return;
+  }
+  const anim=t!==Infinity,m=S.motion,q=anim?inout(t/S.dur):0;
+  /* every movement starts exactly at the framing the user set by hand */
+  const kb=(anim&&m==="zoom")?0.08*q:0;
+  const img=S.photo;
+  let base=Math.max(W/img.width,H/img.height)*(+$("zoom").value/100)*(1+kb);
+  /* pans need spare width on both sides: scale up just enough that the photo never leaves the frame */
+  const PAN=220;
+  if(m==="rl"||m==="lr")base=Math.max(base,(W+2*PAN)/img.width);
+  const dw=img.width*base,dh=img.height*base;
+  const maxX=(dw-W)/2,maxY=(dh-H)/2;
+  S.ox=Math.max(-maxX,Math.min(maxX,S.ox));S.oy=Math.max(-maxY,Math.min(maxY,S.oy));
+  let x=S.ox;
+  if(m==="rl"||m==="lr"){
+    const dir=m==="rl"?1:-1;
+    const from=S.ox,to=Math.max(-maxX,Math.min(maxX,S.ox-dir*PAN));
+    if(!anim)$("panHint").hidden=Math.abs(to-from)>=60;
+    x=from+(to-from)*q;
+  }
+  if(!anim&&m!=="rl"&&m!=="lr")$("panHint").hidden=true;
+  ctx.drawImage(img,(W-dw)/2+x,(H-dh)/2+S.oy,dw,dh);
+}
+
+const LOGO=new Image();LOGO.onload=()=>{if(!busy)draw()};LOGO.src="data:image/png;base64,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";
+/* official white logo, scaled up 1.4x in the top-left corner */
+const DAYS=["E DIEL","E HËNË","E MARTË","E MËRKURË","E ENJTE","E PREMTE","E SHTUNË"];
+const MONTHS=["JANAR","SHKURT","MARS","PRILL","MAJ","QERSHOR","KORRIK","GUSHT","SHTATOR","TETOR","NËNTOR","DHJETOR"];
+function today(){const d=new Date();return `${DAYS[d.getDay()]} · ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`}
+
+/* date top-right, aligned with the logo: letters type in, then a category-coloured line draws in from the right */
+function drawDate(t){
+  const txt=$("date").value.trim().toUpperCase();
+  if(!$("dateOn").checked||!txt)return;
+  ctx.font='600 34px "IBM Plex Sans",sans-serif';ctx.textBaseline="alphabetic";
+  const full=ctx.measureText(txt).width,R=W-90,x=R-full,y=238;
+  const pw=prog(t,0.35,1.1);
+  ctx.fillStyle="#fff";ctx.globalAlpha=1;
+  ctx.save();ctx.beginPath();ctx.rect(x-4,y-44,(full+8)*pw,64);ctx.clip();
+  ctx.globalAlpha=pw;ctx.fillText(txt,x+(1-pw)*30,y);ctx.restore();ctx.globalAlpha=1;
+  const p=prog(t,0.9,1.0);
+  ctx.fillStyle=cat().color;ctx.fillRect(R-full*p,y+16,full*p,4);
+}
+
+function drawLogo(){
+  if(!(LOGO.complete&&LOGO.naturalWidth))return;
+  const k=1.4;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+  ctx.drawImage(LOGO,84,180,LOGO.naturalWidth*k,LOGO.naturalHeight*k);
+}
+
+/* t = seconds into the animation; Infinity = finished frame (PNG and editing) */
+function draw(t=Infinity){
+  ctx.clearRect(0,0,W,H);
+  ctx.globalAlpha=1;
+  drawPhoto(t);
+  const sh=(+$("shade").value/100)*(0.35+0.65*prog(t,0,1.4));
+  const g=ctx.createLinearGradient(0,H*0.38,0,H);
+  g.addColorStop(0,"rgba(20,20,22,0)");g.addColorStop(0.42,`rgba(20,20,22,${0.75*sh})`);g.addColorStop(1,`rgba(20,20,22,${sh})`);
+  ctx.fillStyle=g;ctx.fillRect(0,H*0.38,W,H*0.62);
+  const tg=ctx.createLinearGradient(0,0,0,520);
+  tg.addColorStop(0,`rgba(20,20,22,${0.45*sh})`);tg.addColorStop(1,"rgba(20,20,22,0)");
+  ctx.fillStyle=tg;ctx.fillRect(0,0,W,520);
+  ctx.globalAlpha=prog(t,0.1,1.2);
+  drawLogo();
+  ctx.globalAlpha=1;
+  drawDate(t);
+
+  const X=90,maxW=W-180,size=+$("size").value,lh=size*1.06;
+  ctx.font=`700 ${size}px "Noto Serif Display",Georgia,serif`;
+  const lines=wrap($("title").value,maxW);
+  const sub=$("sub").value.trim(),cta=$("cta").checked;
+  ctx.font='400 44px "IBM Plex Sans",sans-serif';
+  const subLines=sub?wrap(sub,maxW):[];
+
+  /* timeline: tag 0.3s, headline lines from 0.7s, subtitle and CTA after */
+  const lineStart=i=>0.75+i*0.12;
+  const subStart=lineStart(lines.length)+0.2;
+
+  let y=H-330;
+  if(cta){
+    /* solid placeholder for the Instagram link sticker, visible from the first frame and in every export */
+    const bw=520,bh=130,by=y-95;
+    ctx.fillStyle="#ffffff";ctx.beginPath();ctx.roundRect(X,by,bw,bh,26);ctx.fill();
+    ctx.strokeStyle=cat().outline||cat().color;ctx.lineWidth=6;ctx.beginPath();ctx.roundRect(X+3,by+3,bw-6,bh-6,23);ctx.stroke();
+    y-=175;
+  }
+  if(subLines.length){
+    const p=prog(t,subStart,1.0);
+    ctx.font='400 44px "IBM Plex Sans",sans-serif';ctx.fillStyle="rgba(255,255,255,.82)";
+    ctx.globalAlpha=p;
+    for(let i=subLines.length-1;i>=0;i--){ctx.fillText(subLines[i],X,y+(1-p)*24);y-=60}
+    ctx.globalAlpha=1;
+    y-=34;
+  }
+  ctx.font=`700 ${size}px "Noto Serif Display",Georgia,serif`;ctx.fillStyle="#fff";
+  for(let i=lines.length-1;i>=0;i--){
+    const p=prog(t,lineStart(i),1.1);
+    ctx.globalAlpha=p;ctx.fillText(lines[i],X,y+(1-p)*size*0.35);
+    y-=lh;
+  }
+  ctx.globalAlpha=1;
+  const tag=$("tag").value.trim().toUpperCase();
+  if(tag){
+    ctx.font='500 62px "Noto Serif Display",Georgia,serif';
+    const tw=ctx.measureText(tag).width,th=92,ty=y+lh-size*0.82-th-36;
+    const pb=prog(t,0.25,0.9),pt=prog(t,0.5,0.8);
+    ctx.fillStyle=cat().color;ctx.fillRect(X,ty,(tw+44)*pb,th);
+    ctx.save();ctx.beginPath();ctx.rect(X,ty,(tw+44)*pb,th);ctx.clip();
+    ctx.globalAlpha=pt;ctx.fillStyle=cat().ink;ctx.fillText(tag,X+22,ty+th-24);
+    ctx.restore();
+  }
+}
+
+/* plays the animation on the canvas; resolves when done */
+let anim=null;
+function play(){
+  if(anim)cancelAnimationFrame(anim.raf);
+  return new Promise(res=>{
+    const t0=performance.now();
+    const step=now=>{
+      const t=(now-t0)/1000;
+      draw(Math.min(t,S.dur));
+      if(t<S.dur)anim.raf=requestAnimationFrame(step);else{anim=null;res()}
+    };
+    anim={raf:requestAnimationFrame(step)};
+  });
+}
+
+function pickType(){
+  const types=["video/mp4;codecs=avc1.42E01F","video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm"];
+  return types.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
+}
+
+async function recordVideo(){
+  S.exporting=true;
+  try{return await recordVideoInner()}finally{S.exporting=false}
+}
+async function recordVideoInner(){
+  const type=pickType();
+  if(!type||!cv.captureStream)throw new Error("unsupported");
+  /* phones record live from the screen: 30 fps keeps up, the screen stays awake, and leaving the page aborts */
+  const stream=cv.captureStream(PHONE?30:60);
+  const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:10_000_000});
+  const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const done=new Promise(r=>rec.onstop=r);
+  let lock=null,left=false;
+  try{lock=await navigator.wakeLock?.request("screen")}catch(e){}
+  const onVis=()=>{if(document.hidden)left=true};
+  document.addEventListener("visibilitychange",onVis);
+  try{
+    draw(0);
+    rec.start(250);
+    await play();
+    await new Promise(r=>setTimeout(r,300));
+    rec.stop();await done;
+  }finally{
+    stream.getTracks().forEach(tr=>tr.stop());
+    document.removeEventListener("visibilitychange",onVis);
+    lock?.release().catch(()=>{});
+  }
+  if(left)throw new Error("left");
+  return {blob:new Blob(chunks,{type:type.split(";")[0]}),ext:type.startsWith("video/mp4")?"mp4":"webm"};
+}
+
+function sync(){
+  $("zoomOut").textContent=$("zoom").value+"%";
+  $("shadeOut").textContent=$("shade").value+"%";
+  $("sizeOut").textContent=$("size").value;
+  const cur=$("tag").value.trim().toUpperCase();
+  [...chips.children].forEach(c=>c.setAttribute("aria-pressed",c.textContent===cur));
+  document.documentElement.style.setProperty("--red",cat().color);
+  document.documentElement.style.setProperty("--red-ink",cat().ink);
+  [...catChips.children].forEach(c=>{const on=c.dataset.k===S.cat,col=CATS[c.dataset.k];c.setAttribute("aria-pressed",on);
+    c.style.background=on?col.color:"";c.style.borderColor=on?col.color:"";c.style.color=on?col.ink:""});
+  [...$("durChips").children].forEach(c=>c.setAttribute("aria-pressed",+c.dataset.d===S.dur));
+  [...$("motionChips").children].forEach(c=>c.setAttribute("aria-pressed",c.dataset.m===S.motion));
+  if(!busy)draw();
+  store("aps-draft",JSON.stringify({cat:S.cat,tag:$("tag").value,title:$("title").value,sub:$("sub").value,size:$("size").value,shade:$("shade").value,cta:$("cta").checked}));
+}
+
+function readImage(file,cb){
+  if(!file||!file.type.startsWith("image/"))return;
+  const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>cb(i,r.result);i.src=r.result};r.readAsDataURL(file);
+}
+function setPhoto(file){readImage(file,i=>{S.photo=i;S.ox=0;S.oy=0;$("zoom").value=100;$("result").hidden=true;$("frame").classList.add("has-photo");sync()})}
+
+$("drop").onclick=()=>$("file").click();
+$("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
+$("file").onchange=e=>setPhoto(e.target.files[0]);
+["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop")setPhoto(e.dataTransfer.files[0])}));
+document.addEventListener("paste",e=>{const f=[...(e.clipboardData?.files||[])][0];if(f)setPhoto(f)});
+
+
+/* one finger (or the mouse) drags the photo, two fingers pinch the zoom slider */
+let drag=null,pinch=null;const pts=new Map();
+const gap=()=>{const [a,b]=[...pts.values()];return Math.hypot(a.x-b.x,a.y-b.y)||1};
+cv.addEventListener("pointerdown",e=>{
+  if(!S.photo||busy)return;
+  cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pts.size===2){drag=null;pinch={d:gap(),z:+$("zoom").value}}
+  else if(pts.size===1){drag={x:e.clientX,y:e.clientY,ox:S.ox,oy:S.oy};cv.classList.add("drag")}
+});
+cv.addEventListener("pointermove",e=>{
+  if(!pts.has(e.pointerId))return;
+  pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch&&pts.size>=2){$("zoom").value=Math.round(Math.max(100,Math.min(300,pinch.z*gap()/pinch.d)));sync();return}
+  if(!drag)return;
+  const k=W/cv.getBoundingClientRect().width;S.ox=drag.ox+(e.clientX-drag.x)*k;S.oy=drag.oy+(e.clientY-drag.y)*k;draw();
+});
+/* pointercancel too: iOS cancels touches on system gestures, which used to leave the photo stuck to the finger */
+const endPtr=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size){drag=null;cv.classList.remove("drag")}};
+cv.addEventListener("pointerup",endPtr);cv.addEventListener("pointercancel",endPtr);
+
+$("form").addEventListener("input",sync);
+$("form").addEventListener("change",sync);
+
+const MOTIONS=[["zoom","Zoom i ngadalshëm"],["rl","Pan djathtas → majtas"],["lr","Pan majtas → djathtas"],["none","Pa lëvizje"]];
+S.motion="zoom";
+MOTIONS.forEach(([k,label])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label;b.dataset.m=k;
+  b.onclick=()=>{S.motion=k;sync()};$("motionChips").appendChild(b)});
+const durChips=$("durChips");
+DURS.forEach(d=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=d+" sekonda";
+  b.onclick=()=>{S.dur=d;sync()};b.dataset.d=d;durChips.appendChild(b)});
+
+let busy=false;
+$("play").onclick=async()=>{if(busy)return;busy=true;await play();busy=false;draw()};
+
+$("saveVid").onclick=async()=>{
+  if(busy)return;busy=true;
+  const st=$("status");st.textContent=`Duke regjistruar videon (${S.dur} s)… mos e mbyll faqen.`;
+  try{const {blob,ext}=await recordVideo();busy=false;draw();await saveFile(blob,ext)}
+  catch(err){busy=false;draw();st.textContent=err?.message==="left"
+    ?"Regjistrimi u ndërpre sepse u largove nga faqja. Provo sërish dhe mbaje ekranin hapur."
+    :"Ky shfletues nuk mund të regjistrojë video. Provo Chrome ose Safari të përditësuar."}
+};
+
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(busy)return;
+  $("status").textContent="Duke përgatitur…";
+  S.exporting=true;draw();
+  const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+  S.exporting=false;draw();
+  await saveFile(blob,"png");
+});
+
+/* on phones the share sheet is the way into Photos ("Save Image" / "Save Video"); a plain download lands in Files */
+function canShareFile(file){try{return !!(navigator.canShare&&navigator.canShare({files:[file]}))}catch(e){return false}}
+async function shareFile(file){
+  const st=$("status");
+  try{await navigator.share({files:[file]});st.textContent="U ruajt: "+file.name;return true}
+  catch(err){if(err?.name==="AbortError"){st.textContent="Ruajtja u anulua.";return true}return false}
+}
+
+async function saveFile(blob,ext){
+  const st=$("status");$("result").hidden=true;
+  const slug=($("title").value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40))||"story";
+  const name=`albanianpost-${slug}.${ext}`;
+  const file=new File([blob],name,{type:blob.type});
+  const share=PHONE&&canShareFile(file);
+  const showFallback=()=>{
+    const url=URL.createObjectURL(blob),isImg=ext==="png";
+    $("resultImg").hidden=!isImg;$("resultVid").hidden=isImg;
+    if(isImg)$("resultImg").src=url;else{$("resultVid").src=url;$("resultVid").play().catch(()=>{})}
+    $("shareBtn").hidden=!share;$("shareBtn").onclick=()=>shareFile(file);
+    $("resultHint").hidden=share&&!isImg;
+    $("resultHint").textContent=PHONE?"Ose mbaje shtypur foton → “Ruaj”.":"Kliko djathtas ose mbaje shtypur → “Ruaj”.";
+    $("result").hidden=false;
+  };
+  const downloads=window.claude?.use?await window.claude.use("downloads"):undefined;
+  if(downloads){
+    try{await downloads.save({filename:name,data:blob});st.textContent="U ruajt: "+name}
+    catch(err){if(err?.code==="declined")st.textContent="Ruajtja u anulua.";else{st.textContent="Ruaje më poshtë.";showFallback()}}
+  }else if(share){
+    /* the share sheet needs a fresh tap; after a 5–10 s recording that tap has expired, so offer a button */
+    if(await shareFile(file))return;
+    st.textContent="Shtyp “Ruaj në telefon” më poshtë.";showFallback();
+  }else if(downloads===undefined){
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();st.textContent="U ruajt: "+name;
+  }else{st.textContent="Ruaje më poshtë.";showFallback()}
+  if(ext==="webm")st.textContent+=" Ky shfletues e ruan si WebM; për MP4 përdor Chrome të ri ose Safari.";
+}
+
+(function init(){
+  try{const d=JSON.parse(load("aps-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;$("tag").value=d.tag??"KOSOVË";$("title").value=d.title??"";$("sub").value=d.sub??"";$("size").value=d.size??112;$("shade").value=d.shade??85;$("cta").checked=d.cta!==false}}catch(e){}
+  store("aps-logo",null);$("date").value=today();renderSubs();sync();
+  $("inapp").hidden=!INAPP;
+  Promise.all([
+    document.fonts.load('700 100px "Noto Serif Display"',"ËÇë"),
+    document.fonts.load('500 60px "Noto Serif Display"',"KOSOVË"),
+    document.fonts.load('600 36px "IBM Plex Sans"',"LEXO MË")
+  ]).catch(()=>{}).then(()=>{if(!busy)draw()});
+  document.fonts.ready.then(()=>{if(!busy)draw()});
+  $("nojs").remove();
+  /* offline copy of the app (needs https; localhost for testing) */
+  if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost"))
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>

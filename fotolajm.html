@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="sq">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Albanian Post Fotolajm</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="AP Studio">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#cc2424">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="common.css">
+<style>
+/* 4:5 post, same proportions as Kosove.psd */
+.frame{aspect-ratio:4/5}
+@media (max-width:820px){.frame{height:auto;width:min(100%,460px,calc(58vh*4/5));width:min(100%,460px,calc(58svh*4/5))}}
+</style>
+
+<header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Fotolajm · 1080 × 1350</span></header>
+
+<div class="inapp" id="nojs" style="max-width:1100px;margin:0 auto 18px">
+  <b>Kjo faqe nuk po punon këtu.</b> Je duke e parë si pamje paraprake (Files, WhatsApp, Mail…), ku fotot nuk funksionojnë.
+  Në iPhone hape nga një <b>link</b> (adresë interneti) në <b>Safari</b> ose Chrome.
+</div>
+
+<div class="app">
+  <div class="stage">
+    <div class="frame" id="frame">
+      <canvas id="cv" width="1080" height="1350" aria-label="Pamja e fotolajmit"></canvas>
+    </div>
+    <div class="hint">Tërhiqe foton për ta lëvizur; me dy gishta e zmadhon.</div>
+  </div>
+
+  <form class="panel" id="form" autocomplete="off">
+    <div class="group">
+      <span class="lab">Fotoja</span>
+      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko foton</b><br>ose tërhiqe këtu, ose ngjite (Ctrl/Cmd+V)</div>
+      <input type="file" id="file" accept="image/*" hidden>
+      <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
+      <div class="row"><span class="small">Errësimi</span><input type="range" id="shade" min="0" max="100" step="1" value="100"><output id="shadeOut">100%</output></div>
+    </div>
+
+    <div class="group">
+      <span class="lab">Kategoria</span>
+      <div class="chips" id="catChips"></div>
+      <label for="tag" style="margin-top:6px">Rubrika</label>
+      <div class="chips" id="chips"></div>
+      <input type="text" id="tag" value="KOSOVË" maxlength="30">
+    </div>
+
+    <div class="group">
+      <label for="title">Titulli</label>
+      <textarea id="title" maxlength="140">Flamuri i UÇK-së valon në objektin e Odës së Mjekëve</textarea>
+      <div class="row"><span class="small">Madhësia</span><input type="range" id="size" min="56" max="110" step="1" value="76"><output id="sizeOut">76</output></div>
+    </div>
+
+    <div class="inapp" id="inapp" hidden>Je brenda Instagramit ose Facebook-ut, ku skedarët nuk ruhen dot. Hape këtë faqe në Safari ose Chrome (menyja ⋯ → “Hap në shfletues”).</div>
+    <div class="btns"><button type="submit" class="btn primary" id="save">Ruaj PNG</button></div>
+    <div class="status" id="status" role="status"></div>
+    <div class="result" id="result" hidden>
+      <img id="resultImg" alt="Fotolajmi i gatshëm" hidden>
+      <video id="resultVid" controls muted playsinline loop hidden></video>
+      <button type="button" class="btn primary" id="shareBtn" hidden>Ruaj në telefon</button>
+      <div class="small" id="resultHint" style="text-align:center">Ose mbaje shtypur foton → “Ruaj”.</div>
+    </div>
+  </form>
+</div>
+
+<script src="common.js"></script>
+<script>
+/* Kosove.psd rebuilt: photo, the PSD's own dark gradient (Black BG + Gradient Fill), logo, rubrika box, title.
+   Positions are the PSD's; the title grows upwards from its last line like the original text box. */
+const W=1080,H=1350;
+const cv=$("cv"),ctx=cv.getContext("2d");
+const S={photo:null,ox:0,oy:0,cat:"lajme"};
+const OVERLAY=new Image();OVERLAY.onload=()=>draw();OVERLAY.src="foto-overlay.webp";
+const LOGO=new Image();LOGO.onload=()=>draw();LOGO.src="logo.png";
+
+const TITLE_X=59,TITLE_W=962,LAST_BASELINE=1142;      // PSD: baselines 1050 / 1142 at 76 px, 92 px apart
+const TAG_H=67,TAG_PAD=19,TAG_GAP=43;                   // PSD: box 57,887 → 243,954; 43 px above the title's caps
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  if(S.photo){
+    const r=coverRect(S,S.photo.width,S.photo.height,W,H,+$("zoom").value/100);
+    ctx.drawImage(S.photo,r.x,r.y,r.w,r.h);
+  }else{
+    ctx.fillStyle="#3b3d41";ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#56585d";ctx.font='500 44px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
+    ctx.fillText("Ngarko një foto",W/2,H*0.36);ctx.textAlign="left";
+  }
+  if(OVERLAY.complete&&OVERLAY.naturalWidth){ctx.globalAlpha=+$("shade").value/100;ctx.drawImage(OVERLAY,0,0,W,H);ctx.globalAlpha=1}
+  if(LOGO.complete&&LOGO.naturalWidth)ctx.drawImage(LOGO,59,134,188,85);
+
+  const size=+$("size").value,lead=size*92/76;
+  ctx.font=`700 ${size}px "Noto Serif Display",Georgia,serif`;ctx.fillStyle="#fff";ctx.textBaseline="alphabetic";
+  const lines=wrapText(ctx,$("title").value,TITLE_W);
+  const first=LAST_BASELINE-(lines.length-1)*lead;
+  lines.forEach((l,i)=>ctx.fillText(l,TITLE_X,first+i*lead));
+
+  const tag=$("tag").value.trim().toUpperCase();
+  if(tag){
+    const capTop=first-size*0.70,bottom=lines.length?capTop-TAG_GAP:LAST_BASELINE;
+    ctx.font='500 42px "Noto Serif Display",Georgia,serif';
+    const tw=ctx.measureText(tag).width;
+    ctx.fillStyle=S.color||CATS[S.cat].color;ctx.fillRect(57,bottom-TAG_H,tw+TAG_PAD*2,TAG_H);
+    ctx.fillStyle=CATS[S.cat].ink;ctx.fillText(tag,57+TAG_PAD,bottom-21);
+  }
+}
+
+function sync(){
+  $("zoomOut").textContent=$("zoom").value+"%";
+  $("shadeOut").textContent=$("shade").value+"%";
+  $("sizeOut").textContent=$("size").value;
+  paintCats(S,$("catChips"),$("chips"),$("tag"));
+  draw();
+  store("ap-foto-draft",JSON.stringify({cat:S.cat,tag:$("tag").value,title:$("title").value,size:$("size").value,shade:$("shade").value}));
+}
+
+function setPhoto(file){
+  if(!file||!file.type.startsWith("image/"))return;
+  const url=URL.createObjectURL(file),i=new Image();
+  i.onload=()=>{S.photo=i;S.ox=0;S.oy=0;$("zoom").value=100;$("result").hidden=true;$("frame").classList.add("has-photo");sync()};
+  i.src=url;
+}
+$("drop").onclick=()=>$("file").click();
+$("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
+$("file").onchange=e=>setPhoto(e.target.files[0]);
+["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop")setPhoto(e.dataTransfer.files[0])}));
+document.addEventListener("paste",e=>{const f=[...(e.clipboardData?.files||[])][0];if(f)setPhoto(f)});
+setupFraming(cv,S,W,$("zoom"),()=>!!S.photo,draw);
+
+$("form").addEventListener("input",sync);
+$("form").addEventListener("change",sync);
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  $("status").textContent="Duke përgatitur…";
+  const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+  await saveFile(blob,"png","albanianpost-foto-"+slugOf($("title").value));
+});
+
+(function init(){
+  try{const d=JSON.parse(load("ap-foto-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;$("tag").value=d.tag??"KOSOVË";$("title").value=d.title??"";$("size").value=d.size??76;$("shade").value=d.shade??100}}catch(e){}
+  setupCats(S,$("catChips"),$("chips"),$("tag"),sync);
+  sync();
+  Promise.all([
+    document.fonts.load('700 76px "Noto Serif Display"',"ËÇë"),
+    document.fonts.load('500 42px "Noto Serif Display"',"KOSOVË"),
+    document.fonts.load('500 44px "IBM Plex Sans"',"Ngarko")
+  ]).catch(()=>{}).then(draw);
+  document.fonts.ready.then(draw);
+  scriptsRunning();
+})();
+</script>

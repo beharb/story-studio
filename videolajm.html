@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="sq">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Albanian Post Video Lajm</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="AP Studio">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#cc2424">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="common.css">
+<style>
+.frame{aspect-ratio:9/16}
+@media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(62vh*9/16));width:min(100%,420px,calc(62svh*9/16))}}
+/* the source video plays here, invisible; the canvas shows it with the graphics on top */
+#src{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
+</style>
+
+<header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Video Lajm · 1080 × 1920</span></header>
+
+<div class="inapp" id="nojs" style="max-width:1100px;margin:0 auto 18px">
+  <b>Kjo faqe nuk po punon këtu.</b> Je duke e parë si pamje paraprake (Files, WhatsApp, Mail…), ku videot nuk funksionojnë.
+  Në iPhone hape nga një <b>link</b> (adresë interneti) në <b>Safari</b> ose Chrome.
+</div>
+
+<div class="app">
+  <div class="stage">
+    <div class="frame" id="frame">
+      <canvas id="cv" width="1080" height="1920" aria-label="Pamja e video-lajmit"></canvas>
+    </div>
+    <div class="row" style="width:min(100%,420px)"><span class="small">Koha</span><input type="range" id="scrub" min="0" max="10" step="0.01" value="3"><output id="scrubOut">0:03</output></div>
+    <div class="hint">Tërhiqe videon për ta lëvizur; me dy gishta e zmadhon.</div>
+  </div>
+
+  <form class="panel" id="form" autocomplete="off">
+    <div class="group">
+      <span class="lab">Videoja</span>
+      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko videon</b> (ose një foto)<br>ose tërhiqe këtu</div>
+      <input type="file" id="file" accept="video/*,image/*" hidden>
+      <div class="small" id="mediaInfo"></div>
+      <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
+    </div>
+
+    <div class="group">
+      <span class="lab">Kategoria</span>
+      <div class="chips" id="catChips"></div>
+      <label for="tag" style="margin-top:6px">Rubrika</label>
+      <div class="chips" id="chips"></div>
+      <input type="text" id="tag" value="KOSOVË" maxlength="30">
+      <div class="row"><span class="small" style="flex:1">Ngjyra e katrorëve</span><input type="color" id="color" value="#cc2424" aria-label="Ngjyra e katrorëve"></div>
+    </div>
+
+    <div class="group">
+      <label for="title">Titulli (citati)</label>
+      <textarea id="title" maxlength="160">“Nëse aprovohet ligji, jemi të hapur të bisedojmë për presidentin”</textarea>
+      <div class="row"><span class="small">Madhësia</span><input type="range" id="size" min="56" max="100" step="1" value="77"><output id="sizeOut">77</output></div>
+    </div>
+
+    <div class="group">
+      <span class="lab">Data dhe vendi</span>
+      <div class="three">
+        <input type="text" id="num" maxlength="3" aria-label="Numri (dita)" inputmode="numeric">
+        <input type="text" id="place" value="PRISHTINË" maxlength="24" aria-label="Vendi">
+        <input type="text" id="date" maxlength="24" aria-label="Data">
+      </div>
+      <span class="small">Dita · vendi · muaji dhe viti</span>
+    </div>
+
+    <div class="group">
+      <span class="lab">Grafika del</span>
+      <div class="chips" id="lenChips"></div>
+      <div class="btns"><button type="button" class="btn" id="play">▶ Shiko</button><button type="button" class="btn" id="stop" hidden>■ Ndalo</button></div>
+    </div>
+
+    <div class="inapp" id="inapp" hidden>Je brenda Instagramit ose Facebook-ut, ku skedarët nuk ruhen dot. Hape këtë faqe në Safari ose Chrome (menyja ⋯ → “Hap në shfletues”).</div>
+    <div class="btns"><button type="button" class="btn primary" id="saveVid">Ruaj video</button><button type="submit" class="btn" id="save">Ruaj PNG</button></div>
+    <progress id="prog" max="1" value="0" hidden></progress>
+    <div class="status" id="status" role="status"></div>
+    <div class="result" id="result" hidden>
+      <img id="resultImg" alt="Pamja e gatshme" hidden>
+      <video id="resultVid" controls playsinline loop hidden></video>
+      <button type="button" class="btn primary" id="shareBtn" hidden>Ruaj në telefon</button>
+      <div class="small" id="resultHint" style="text-align:center">Ose mbaje shtypur foton → “Ruaj”.</div>
+    </div>
+  </form>
+</div>
+<video id="src" playsinline preload="auto"></video>
+
+<script src="common.js"></script>
+<script>
+/* “LAJMET VIDEO – safe margins” (Videolajm_Final.mogrt) rebuilt: the video fills the 1080×1920 frame;
+   logo top-left; day number | red bar | place + month top-right; rubrika box and the quote over a dark
+   panel at the bottom. Positions come from the template's own render; the timing follows it too:
+   graphics build in over the first ~2.5 s and leave over the last ~2 s of their run, the logo stays. */
+const W=1080,H=1920;
+const cv=$("cv"),ctx=cv.getContext("2d"),vid=$("src");
+const S={photo:null,video:false,ox:0,oy:0,cat:"lajme",color:null,len:"end"};
+const LOGO=new Image();LOGO.onload=()=>draw();LOGO.src="logo.png";
+
+const PANEL_Y=1328,PANEL="#2e2b2c";
+const X=110,QUOTE_W=860,QUOTE_BASE=1376;               // quote: first baseline, 92 px apart at 77 px
+const TAG_Y=1207,TAG_H=67,TAG_PAD=19;
+const TOP_RIGHT=970,BAR_Y=192,BAR_H=101,BAR_W=12;
+const LENS=[["end","Në fund"],[8,"Pas 8 s"],[15,"Pas 15 s"]];
+
+const seg=(t,a,b)=>clamp((t-a)/(b-a));
+const ease=v=>1-Math.pow(1-clamp(v),3);
+const back=v=>{v=clamp(v);const c=1.5;return 1+(c+1)*Math.pow(v-1,3)+c*Math.pow(v-1,2)};
+
+/* how long the finished video is, and when the graphics have finished leaving */
+function total(){return S.video&&isFinite(vid.duration)?vid.duration:(S.len==="end"?10:S.len+1)}
+function gEnd(){const T=total();return S.len==="end"?T-0.15:Math.min(S.len,T-0.15)}
+
+/* animation state at time t (null = everything in place, for editing) */
+function state(t){
+  if(t==null)return {bar:1,num:1,txt:1,tag:1,tagTxt:1,panel:1,word:()=>({a:1,dy:0})};
+  const O=gEnd()-2.1;                                   // outro starts here
+  if(t<O||O<2.6){
+    return {bar:ease(seg(t,0,0.6)),num:ease(seg(t,0.55,1.0)),txt:ease(seg(t,0.8,1.3)),
+      tag:ease(seg(t,0.5,1.0)),tagTxt:seg(t,0.85,1.1),panel:1,
+      word:i=>{const p=seg(t,1.15+i*0.09,1.7+i*0.09);return {a:clamp(p*1.8),dy:150*(1-back(p))}}};
+  }
+  const u=t-O;
+  return {bar:1-ease(seg(u,1.5,2.1)),num:1-ease(seg(u,1.0,1.5)),txt:1-ease(seg(u,0.9,1.4)),
+    tag:1-ease(seg(u,0,0.5)),tagTxt:1-seg(u,0,0.25),panel:1-seg(u,0.6,0.8),
+    word:i=>{const p=seg(u,1.0+i*0.04,1.4+i*0.04);return {a:clamp(1-p*1.5),dy:50*ease(p)}}};
+}
+
+function drawMedia(){
+  const z=+$("zoom").value/100;
+  if(S.video&&vid.readyState>=2){const r=coverRect(S,vid.videoWidth,vid.videoHeight,W,H,z);ctx.drawImage(vid,r.x,r.y,r.w,r.h);return}
+  if(S.photo){const r=coverRect(S,S.photo.width,S.photo.height,W,H,z);ctx.drawImage(S.photo,r.x,r.y,r.w,r.h);return}
+  ctx.fillStyle="#3b3d41";ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#56585d";ctx.font='500 44px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
+  ctx.fillText(S.video?"Duke ngarkuar videon…":"Ngarko një video",W/2,H*0.33);ctx.textAlign="left";
+}
+
+function draw(t=null){
+  const k=state(t),col=$("color").value,ink=CATS[S.cat].ink;
+  ctx.clearRect(0,0,W,H);ctx.globalAlpha=1;ctx.textBaseline="alphabetic";
+  drawMedia();
+  if(k.panel>0){ctx.globalAlpha=k.panel;ctx.fillStyle=PANEL;ctx.fillRect(0,PANEL_Y,W,H-PANEL_Y);ctx.globalAlpha=1}
+  if(LOGO.complete&&LOGO.naturalWidth)ctx.drawImage(LOGO,X,197,197,89);
+
+  /* top right: number slides out of the bar to the left, place + month slide out to the right */
+  const place=$("place").value.trim().toUpperCase(),date=$("date").value.trim().toUpperCase(),num=$("num").value.trim();
+  ctx.font='700 35px "Noto Serif Display",Georgia,serif';const pw=ctx.measureText(place).width;
+  ctx.font='700 42px "Noto Serif Display",Georgia,serif';const dw=ctx.measureText(date).width;
+  const barX=TOP_RIGHT-Math.max(pw,dw)-BAR_W-7;
+  if(k.num>0&&num){
+    ctx.font='700 100px "Noto Serif Display",Georgia,serif';const nw=ctx.measureText(num).width;
+    ctx.save();ctx.beginPath();ctx.rect(0,BAR_Y-20,barX,BAR_H+40);ctx.clip();
+    ctx.fillStyle="#fff";ctx.fillText(num,barX-5-nw+(1-k.num)*(nw+10),272);ctx.restore();
+  }
+  if(k.txt>0){
+    ctx.save();ctx.beginPath();ctx.rect(barX+BAR_W,BAR_Y-20,W,BAR_H+40);ctx.clip();
+    const off=-(1-k.txt)*(Math.max(pw,dw)+12);ctx.fillStyle="#fff";
+    ctx.font='700 35px "Noto Serif Display",Georgia,serif';ctx.fillText(place,barX+BAR_W+7+off,226);
+    ctx.font='700 42px "Noto Serif Display",Georgia,serif';ctx.fillText(date,barX+BAR_W+7+off,271);
+    ctx.restore();
+  }
+  if(k.bar>0){const h=BAR_H*k.bar;ctx.fillStyle=col;ctx.fillRect(barX,BAR_Y+(BAR_H-h)/2,BAR_W,h)}
+
+  /* rubrika box wipes open from the left */
+  const tag=$("tag").value.trim().toUpperCase();
+  if(tag&&k.tag>0){
+    ctx.font='500 42px "Noto Serif Display",Georgia,serif';
+    const tw=ctx.measureText(tag).width+TAG_PAD*2,w=Math.max(8,tw*k.tag);
+    ctx.fillStyle=col;ctx.fillRect(X,TAG_Y,w,TAG_H);
+    if(k.tagTxt>0){ctx.save();ctx.beginPath();ctx.rect(X,TAG_Y,w,TAG_H);ctx.clip();ctx.globalAlpha=k.tagTxt;
+      ctx.fillStyle=ink;ctx.fillText(tag,X+TAG_PAD,TAG_Y+TAG_H-21);ctx.restore()}
+  }
+
+  /* quote: word by word, each rising into place */
+  const size=+$("size").value,lead=size*92/77;
+  ctx.font=`700 ${size}px "Noto Serif Display",Georgia,serif`;ctx.fillStyle="#fff";
+  const lines=wrapText(ctx,$("title").value,QUOTE_W),space=ctx.measureText(" ").width;let n=0;
+  lines.forEach((line,li)=>{
+    let x=X;const y=QUOTE_BASE+li*lead;
+    line.split(" ").forEach(word=>{
+      const s=k.word(n++);
+      if(s.a>0){ctx.globalAlpha=s.a;ctx.fillText(word,x,y+s.dy)}
+      x+=ctx.measureText(word).width+space;
+    });
+  });
+  ctx.globalAlpha=1;
+}
+
+/* ---------- media ---------- */
+function setMedia(file){
+  if(!file)return;
+  $("result").hidden=true;
+  if(file.type.startsWith("image/")){
+    const i=new Image();i.onload=()=>{S.photo=i;S.video=false;vid.removeAttribute("src");vid.load();resetFrame();$("mediaInfo").textContent="Foto · videoja del "+fmt(total());sync()};
+    i.src=URL.createObjectURL(file);return;
+  }
+  if(!file.type.startsWith("video/")&&!/\.(mov|mp4|m4v|webm)$/i.test(file.name))return;
+  S.photo=null;S.video=true;vid.src=URL.createObjectURL(file);
+  vid.onloadedmetadata=()=>{resetFrame();$("mediaInfo").textContent=`Video ${vid.videoWidth}×${vid.videoHeight} · ${fmt(vid.duration)}`;sync();seek(Math.min(3,vid.duration/2))};
+  vid.onerror=()=>{S.video=false;$("mediaInfo").textContent="Kjo video nuk hapet dot në këtë shfletues.";sync()};
+}
+function resetFrame(){S.ox=0;S.oy=0;$("zoom").value=100;$("frame").classList.add("has-photo")}
+const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+/* show the frame at time t with the graphics as they are at t */
+function seek(t){
+  $("scrub").value=t;$("scrubOut").textContent=fmt(t);
+  if(S.video){vid.currentTime=Math.min(t,Math.max(0,vid.duration-0.05));vid.addEventListener("seeked",()=>draw(+$("scrub").value),{once:true})}
+  else draw(t);
+}
+
+$("drop").onclick=()=>$("file").click();
+$("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
+$("file").onchange=e=>{setMedia(e.target.files[0]);e.target.value=""};
+["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop")setMedia(e.dataTransfer.files[0])}));
+setupFraming(cv,S,W,$("zoom"),()=>(S.photo||S.video)&&!busy,()=>draw(+$("scrub").value));
+$("scrub").addEventListener("input",()=>{if(!busy)seek(+$("scrub").value)});
+
+/* ---------- playback / recording ---------- */
+let busy=false,stopReq=false,actx=null,dest=null;
+/* video sound goes through Web Audio so the recording can carry it */
+function audioOut(){
+  if(actx)return dest;
+  try{
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    const srcNode=actx.createMediaElementSource(vid);
+    dest=actx.createMediaStreamDestination();srcNode.connect(dest);srcNode.connect(actx.destination);
+  }catch(e){dest=null}
+  return dest;
+}
+/* plays from 0 to the end, drawing every frame; video time drives the graphics so they stay in sync */
+async function run(onFrame){
+  const T=total();
+  if(S.video){
+    vid.currentTime=0;await new Promise(r=>vid.addEventListener("seeked",r,{once:true}));
+    try{await vid.play()}catch(e){vid.muted=true;await vid.play()}   // a blocked play with sound still plays silently
+  }
+  const t0=performance.now();
+  await new Promise(res=>{
+    const step=()=>{
+      const t=S.video?vid.currentTime:(performance.now()-t0)/1000;
+      draw(Math.min(t,T));onFrame&&onFrame(t/T);
+      if(stopReq||t>=T||(S.video&&vid.ended))return res();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+  if(S.video)vid.pause();
+}
+/* iOS lets a video play with sound only when play() starts inside the tap itself; touch it right away */
+function unlock(){if(S.video){vid.muted=false;const p=vid.play();if(p)p.then(()=>vid.pause()).catch(()=>{})}}
+function setBusy(on){busy=on;$("play").hidden=on;$("stop").hidden=!on;$("saveVid").disabled=on;$("save").disabled=on;$("scrub").disabled=on}
+
+$("play").onclick=async()=>{
+  if(busy)return;unlock();setBusy(true);stopReq=false;
+  if(actx)actx.resume();
+  try{await run(t=>{$("scrub").value=t*total();$("scrubOut").textContent=fmt(t*total())})}catch(e){}
+  setBusy(false);seek(+$("scrub").value);
+};
+$("stop").onclick=()=>{stopReq=true};
+
+$("saveVid").onclick=async()=>{
+  if(busy)return;
+  const st=$("status");
+  if(!cv.captureStream||!window.MediaRecorder){st.textContent="Ky shfletues nuk mund të regjistrojë video. Provo Safari ose Chrome të përditësuar.";return}
+  unlock();setBusy(true);stopReq=false;$("result").hidden=true;
+  const stream=cv.captureStream(30);
+  let withAudio=false;
+  if(S.video){const d=audioOut();if(d){await actx.resume();d.stream.getAudioTracks().forEach(tr=>{stream.addTrack(tr);withAudio=true})}}
+  const type=pickRecType(withAudio);
+  if(!type){setBusy(false);st.textContent="Ky shfletues nuk mund të regjistrojë video.";return}
+  const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:10_000_000});
+  const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const done=new Promise(r=>rec.onstop=r);
+  /* phones: keep the screen awake; leaving the page would stall the recording */
+  let lock=null,left=false;try{lock=await navigator.wakeLock?.request("screen")}catch(e){}
+  const onVis=()=>{if(document.hidden)left=true};document.addEventListener("visibilitychange",onVis);
+  st.textContent=`Duke regjistruar (${fmt(total())})… mbaje faqen hapur.`;$("prog").hidden=false;
+  try{
+    draw(0);rec.start(250);
+    await run(p=>{$("prog").value=p});
+    await new Promise(r=>setTimeout(r,200));
+    rec.stop();await done;
+  }finally{
+    stream.getVideoTracks().forEach(tr=>tr.stop());
+    document.removeEventListener("visibilitychange",onVis);lock?.release().catch(()=>{});
+    $("prog").hidden=true;setBusy(false);seek(+$("scrub").value);
+  }
+  if(left){st.textContent="Regjistrimi u ndërpre sepse u largove nga faqja. Provo sërish dhe mbaje ekranin hapur.";return}
+  if(stopReq){st.textContent="Regjistrimi u ndal.";return}
+  const ext=type.startsWith("video/mp4")?"mp4":"webm";
+  await saveFile(new Blob(chunks,{type:type.split(";")[0]}),ext,"albanianpost-video-"+slugOf($("title").value));
+  if(ext==="webm")st.textContent+=" Ky shfletues e ruan si WebM; për MP4 përdor Safari ose Chrome të ri.";
+  if(S.video&&!withAudio)st.textContent+=" (pa zë)";
+};
+
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();if(busy)return;
+  $("status").textContent="Duke përgatitur…";
+  const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+  await saveFile(blob,"png","albanianpost-video-"+slugOf($("title").value));
+});
+
+/* ---------- controls ---------- */
+function sync(){
+  $("zoomOut").textContent=$("zoom").value+"%";
+  $("sizeOut").textContent=$("size").value;
+  if(S.color)$("color").value=S.color;
+  paintCats(S,$("catChips"),$("chips"),$("tag"));
+  document.documentElement.style.setProperty("--red",$("color").value);
+  [...$("lenChips").children].forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.l)===String(S.len)));
+  $("scrub").max=total().toFixed(2);
+  if(!busy)draw(+$("scrub").value);
+  store("ap-video-draft",JSON.stringify({cat:S.cat,color:$("color").value,tag:$("tag").value,title:$("title").value,size:$("size").value,place:$("place").value,len:S.len}));
+}
+$("color").addEventListener("input",()=>{S.color=$("color").value});
+LENS.forEach(([v,label])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label;b.dataset.l=v;
+  b.onclick=()=>{S.len=v;sync()};$("lenChips").appendChild(b)});
+$("form").addEventListener("input",sync);
+$("form").addEventListener("change",sync);
+
+(function init(){
+  const d0=new Date();
+  $("num").value=String(d0.getDate()).padStart(2,"0");
+  $("date").value=`${MONTHS[d0.getMonth()]} ${d0.getFullYear()}`;
+  try{const d=JSON.parse(load("ap-video-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;S.color=d.color||null;$("tag").value=d.tag??"KOSOVË";
+    $("title").value=d.title??"";$("size").value=d.size??77;$("place").value=d.place??"PRISHTINË";if(d.len==="end"||d.len===8||d.len===15)S.len=d.len}}catch(e){}
+  setupCats(S,$("catChips"),$("chips"),$("tag"),sync);
+  sync();seek(3);
+  Promise.all([
+    document.fonts.load('700 77px "Noto Serif Display"',"ËÇë“”"),
+    document.fonts.load('500 42px "Noto Serif Display"',"KOSOVË"),
+    document.fonts.load('500 44px "IBM Plex Sans"',"Ngarko")
+  ]).catch(()=>{}).then(()=>{if(!busy)draw(+$("scrub").value)});
+  scriptsRunning();
+})();
+</script>
