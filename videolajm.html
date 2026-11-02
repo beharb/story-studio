@@ -15,7 +15,8 @@
 .frame{aspect-ratio:9/16}
 @media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(62vh*9/16));width:min(100%,420px,calc(62svh*9/16))}}
 /* the source video plays here, invisible; the canvas shows it with the graphics on top */
-#src{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
+/* iOS only decodes frames of a video it treats as visible: keep it on screen, behind everything, nearly transparent */
+#src{position:fixed;left:0;bottom:0;width:64px;height:36px;opacity:.01;pointer-events:none;z-index:-1}
 </style>
 
 <header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Video Lajm · 1080 × 1920</span></header>
@@ -86,7 +87,7 @@
     </div>
   </form>
 </div>
-<video id="src" playsinline preload="auto"></video>
+<video id="src" playsinline muted preload="auto"></video>
 
 <script src="common.js"></script>
 <script>
@@ -100,6 +101,8 @@ const S={photo:null,video:false,ox:0,oy:0,cat:"lajme",color:null,len:"end"};
 const LOGO=new Image();LOGO.onload=()=>draw();LOGO.src="logo.png";
 
 const PANEL_Y=1328,PANEL="#2e2b2c";
+/* the template's "Black BG" layer: a soft fade that rises 600 px above the grey box and melts into it (alpha curve measured from the PSD layer) */
+const FADE=600,FADE_STOPS=[[0,0],[.067,.024],[.2,.2],[.333,.5],[.467,.72],[.6,.84],[.733,.91],[.867,.96],[1,1]];
 const X=110,QUOTE_W=860,QUOTE_BASE=1376;               // quote: first baseline, 92 px apart at 77 px
 const TAG_Y=1207,TAG_H=67,TAG_PAD=19;
 const TOP_RIGHT=970,BAR_Y=192,BAR_H=101,BAR_W=12;
@@ -141,7 +144,8 @@ function draw(t=null){
   const k=state(t),col=$("color").value,ink=CATS[S.cat].ink;
   ctx.clearRect(0,0,W,H);ctx.globalAlpha=1;ctx.textBaseline="alphabetic";
   drawMedia();
-  if(k.panel>0){ctx.globalAlpha=k.panel;ctx.fillStyle=PANEL;ctx.fillRect(0,PANEL_Y,W,H-PANEL_Y);ctx.globalAlpha=1}
+  if(k.panel>0){ctx.globalAlpha=k.panel;const g=ctx.createLinearGradient(0,PANEL_Y-FADE,0,PANEL_Y);FADE_STOPS.forEach(([o,a])=>g.addColorStop(o,`rgba(46,43,44,${a})`));
+    ctx.fillStyle=g;ctx.fillRect(0,PANEL_Y-FADE,W,FADE);ctx.fillStyle=PANEL;ctx.fillRect(0,PANEL_Y,W,H-PANEL_Y);ctx.globalAlpha=1}
   if(LOGO.complete&&LOGO.naturalWidth)ctx.drawImage(LOGO,X,197,197,89);
 
   /* top right: number slides out of the bar to the left, place + month slide out to the right */
@@ -197,16 +201,22 @@ function setMedia(file){
     i.src=URL.createObjectURL(file);return;
   }
   if(!file.type.startsWith("video/")&&!/\.(mov|mp4|m4v|webm)$/i.test(file.name))return;
-  S.photo=null;S.video=true;vid.src=URL.createObjectURL(file);
-  vid.onloadedmetadata=()=>{resetFrame();$("mediaInfo").textContent=`Video ${vid.videoWidth}×${vid.videoHeight} · ${fmt(vid.duration)}`;sync();seek(Math.min(3,vid.duration/2))};
-  vid.onerror=()=>{S.video=false;$("mediaInfo").textContent="Kjo video nuk hapet dot në këtë shfletues.";sync()};
+  S.photo=null;S.video=true;$("mediaInfo").textContent="Duke hapur videon…";
+  if(vid.src)URL.revokeObjectURL(vid.src);
+  vid.muted=true;vid.src=URL.createObjectURL(file);vid.load();
+  /* iOS won't decode a single frame until the video has played once; a silent play/pause right after picking does it */
+  const p=vid.play();if(p)p.then(()=>vid.pause()).catch(()=>{});
+  const slow=setTimeout(()=>{if(vid.readyState<1)$("mediaInfo").textContent="Videoja po hapet ende… (videot e gjata ose 4K zgjasin pak)"},6000);
+  vid.onloadedmetadata=()=>{clearTimeout(slow);resetFrame();$("mediaInfo").textContent=`Video ${vid.videoWidth}×${vid.videoHeight} · ${fmt(vid.duration)}`;sync();seek(Math.min(3,vid.duration/2))};
+  vid.onloadeddata=()=>draw(+$("scrub").value);
+  vid.onerror=()=>{clearTimeout(slow);S.video=false;$("mediaInfo").textContent="Kjo video nuk hapet dot në këtë shfletues.";sync()};
 }
 function resetFrame(){S.ox=0;S.oy=0;$("zoom").value=100;$("frame").classList.add("has-photo")}
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 /* show the frame at time t with the graphics as they are at t */
 function seek(t){
   $("scrub").value=t;$("scrubOut").textContent=fmt(t);
-  if(S.video){vid.currentTime=Math.min(t,Math.max(0,vid.duration-0.05));vid.addEventListener("seeked",()=>draw(+$("scrub").value),{once:true})}
+  if(S.video){if(!isFinite(vid.duration))return;vid.currentTime=Math.min(t,Math.max(0,vid.duration-0.05));vid.addEventListener("seeked",()=>draw(+$("scrub").value),{once:true});setTimeout(()=>draw(+$("scrub").value),400)}
   else draw(t);
 }
 
@@ -233,7 +243,7 @@ function audioOut(){
 async function run(onFrame){
   const T=total();
   if(S.video){
-    vid.currentTime=0;await new Promise(r=>vid.addEventListener("seeked",r,{once:true}));
+    vid.currentTime=0;await new Promise(r=>{vid.addEventListener("seeked",r,{once:true});setTimeout(r,1500)});
     try{await vid.play()}catch(e){vid.muted=true;await vid.play()}   // a blocked play with sound still plays silently
   }
   const t0=performance.now();
