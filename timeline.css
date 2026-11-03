@@ -1,0 +1,62 @@
+/* Video Lajm timeline: Premiere Pro's dark panel look in both themes */
+.tl{--tl-bg:#1e1e1e;--tl-panel:#262626;--tl-row:#2a2a2a;--tl-row2:#252525;--tl-line:#3a3a3a;--tl-fg:#d6d6d6;--tl-mut:#8d8d8d;
+  --tl-vid:#3d7fa1;--tl-vid-d:#2a5f7b;--tl-img:#7a5aa8;--tl-aud:#20708c;--tl-gfx:#7a2f7e;--tl-ph:#3d8bfd;
+  width:100%;background:var(--tl-bg);color:var(--tl-fg);border-radius:12px;overflow:hidden;border:1px solid #111;
+  font-family:var(--ui);font-size:12px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.tl-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--tl-panel);border-bottom:1px solid #111;flex-wrap:wrap}
+.tl-b{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:30px;padding:0 7px;border-radius:6px;
+  border:1px solid transparent;background:transparent;color:var(--tl-fg);font:inherit;font-weight:600;cursor:pointer}
+.tl-b svg{width:16px;height:16px;flex:none}
+.tl-b:hover{background:#333}
+.tl-b.on{background:#3a3a3a;border-color:#4a4a4a;color:#fff;box-shadow:inset 0 -2px 0 var(--tl-ph)}
+.tl-b:disabled{opacity:.35;cursor:default;background:transparent}
+.tl-b:focus-visible{outline:2px solid var(--tl-ph);outline-offset:1px}
+.tl-play{background:#333;width:38px}
+.tl-grp{display:inline-flex;gap:2px;padding-left:6px;border-left:1px solid var(--tl-line)}
+.tl-gap{flex:1}
+.tl-tc{display:flex;flex-direction:column;line-height:1.15;font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.tl-tc b{color:var(--tl-ph);font-size:14px;font-weight:600}
+.tl-tc span{color:var(--tl-mut);font-size:10px}
+.tl-body{display:flex}
+.tl-heads{flex:none;width:58px;background:var(--tl-panel);border-right:1px solid #111}
+.tl-heads>div{display:flex;flex-direction:column;justify-content:center;padding:0 8px;border-bottom:1px solid #111;gap:1px}
+.tl-heads b{font-size:11px;color:#e8e8e8}.tl-heads span{font-size:9px;color:var(--tl-mut);text-transform:uppercase;letter-spacing:.04em}
+.tl-hr{height:24px}.tl-h2{height:28px}.tl-h1{height:54px}.tl-ha{height:44px}
+.tl-scroll{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#555 transparent}
+.tl-scroll.razor .tl-c,.tl-scroll.razor .tl-a{cursor:crosshair}
+.tl-inner{position:relative;min-width:100%}
+.tl-ruler{display:block;height:24px;background:#1a1a1a;border-bottom:1px solid #111;touch-action:none;cursor:ew-resize}
+.tl-row{position:relative;border-bottom:1px solid #111}
+.tl-r2{height:28px;background:var(--tl-row2)}.tl-r1{height:54px;background:var(--tl-row)}.tl-ra{height:44px;background:var(--tl-row2)}
+.tl-g{position:absolute;top:3px;bottom:3px;background:var(--tl-gfx);border-radius:3px;overflow:hidden;border:1px solid #9a4a9e}
+.tl-g span{position:relative;z-index:1;display:block;padding:4px 6px;font-size:10px;font-weight:600;color:#f3dff4;white-space:nowrap}
+.tl-g i{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.22)}
+.tl-c,.tl-a{position:absolute;top:3px;bottom:3px;border-radius:3px;overflow:hidden;cursor:pointer;touch-action:pan-x;box-sizing:border-box}
+.tl-c{background:var(--tl-vid-d);border:1px solid #4f93b5}
+.tl-c.img{background:#57407a;border-color:#8c6cbc}
+.tl-cn{display:flex;align-items:center;gap:5px;height:16px;padding-right:4px;background:var(--tl-vid);font-size:10px;font-weight:600;color:#eaf6fc;white-space:nowrap;overflow:hidden}
+.tl-c.img .tl-cn{background:var(--tl-img)}
+.tl-cn img{height:46px;width:auto;align-self:flex-start;margin-right:2px;pointer-events:none}
+.tl-cn span{overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.tl-a{background:var(--tl-aud);border:1px solid #2f8fb0}
+.tl-a.none{background:transparent;border:1px dashed #3a3a3a}
+.tl-a canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.tl-c.sel,.tl-a.sel{border:2px solid #f2f2f2;filter:brightness(1.18);touch-action:none}
+.tl-c.drag{opacity:.75;z-index:3;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.tl-tr{position:absolute;top:0;bottom:0;width:12px;display:none;cursor:ew-resize;touch-action:none;z-index:2}
+.tl-tr.l{left:0;background:linear-gradient(90deg,rgba(255,215,0,.85) 0 3px,transparent 3px)}
+.tl-tr.r{right:0;background:linear-gradient(270deg,rgba(255,215,0,.85) 0 3px,transparent 3px)}
+.tl-c.sel .tl-tr{display:block}
+@media (pointer:coarse){.tl-tr{width:22px}.tl-b{height:36px;min-width:36px}.tl-ruler{height:30px}.tl-hr{height:30px}}
+@media (hover:hover){.tl-c:hover .tl-tr{display:block}}
+.tl-ins{position:absolute;top:24px;bottom:0;width:3px;margin-left:-1px;background:#ffd400;z-index:4;pointer-events:none}
+.tl-ph{position:absolute;top:0;bottom:0;left:0;width:0;z-index:5;cursor:ew-resize;touch-action:none}
+.tl-ph::before{content:"";position:absolute;top:0;bottom:0;left:-.5px;width:1px;background:var(--tl-ph)}
+.tl-ph i{position:absolute;top:0;left:-7px;width:14px;height:16px;background:var(--tl-ph);clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%)}
+.tl-ph::after{content:"";position:absolute;top:0;bottom:0;left:-10px;width:20px}
+.tl-empty{padding:10px 12px;color:var(--tl-mut);font-size:12px;border-top:1px solid #111;line-height:1.4}
+.tl-empty b{color:var(--tl-fg)}
+.tl.busy .tl-scroll{pointer-events:none}
+@media (max-width:560px){.tl-w span{display:none}.tl-gap{display:none}.tl-tc{margin-right:auto}}
+/* the two hidden players; iOS only decodes a video it treats as visible, so they stay on screen, nearly transparent */
+.tl-dec{position:fixed;left:0;bottom:0;width:64px;height:36px;opacity:.01;pointer-events:none;z-index:-1}

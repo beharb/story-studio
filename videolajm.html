@@ -11,12 +11,12 @@
 <meta name="theme-color" content="#cc2424">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="timeline.css">
 <style>
-.frame{aspect-ratio:9/16}
-@media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(62vh*9/16));width:min(100%,420px,calc(62svh*9/16))}}
-/* the source video plays here, invisible; the canvas shows it with the graphics on top */
-/* iOS only decodes frames of a video it treats as visible: keep it on screen, behind everything, nearly transparent */
-#src{position:fixed;left:0;bottom:0;width:64px;height:36px;opacity:.01;pointer-events:none;z-index:-1}
+.frame{aspect-ratio:9/16;height:min(58vh,640px)}
+@media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(52vh*9/16));width:min(100%,420px,calc(52svh*9/16))}}
+.app{grid-template-columns:minmax(0,1fr) 360px}
+@media (max-width:820px){.app{grid-template-columns:minmax(0,1fr)}}
 </style>
 
 <header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Video Lajm · 1080 × 1920</span></header>
@@ -31,15 +31,15 @@
     <div class="frame" id="frame">
       <canvas id="cv" width="1080" height="1920" aria-label="Pamja e video-lajmit"></canvas>
     </div>
-    <div class="row" style="width:min(100%,420px)"><span class="small">Koha</span><input type="range" id="scrub" min="0" max="10" step="0.01" value="3"><output id="scrubOut">0:03</output></div>
     <div class="hint">Tërhiqe videon për ta lëvizur; me dy gishta e zmadhon.</div>
+    <div class="tl" id="tl"></div>
   </div>
 
   <form class="panel" id="form" autocomplete="off">
     <div class="group">
       <span class="lab">Videoja</span>
-      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko videon</b> (ose një foto)<br>ose tërhiqe këtu</div>
-      <input type="file" id="file" accept="video/*,image/*" hidden>
+      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko videot</b> (ose foto)<br>ose tërhiqi këtu · shtohen në fund të kohës</div>
+      <input type="file" id="file" accept="video/*,image/*" multiple hidden>
       <div class="small" id="mediaInfo"></div>
       <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
     </div>
@@ -72,7 +72,6 @@
     <div class="group">
       <span class="lab">Grafika del</span>
       <div class="chips" id="lenChips"></div>
-      <div class="btns"><button type="button" class="btn" id="play">▶ Shiko</button><button type="button" class="btn" id="stop" hidden>■ Ndalo</button></div>
     </div>
 
     <div class="inapp" id="inapp" hidden>Je brenda Instagramit ose Facebook-ut, ku skedarët nuk ruhen dot. Hape këtë faqe në Safari ose Chrome (menyja ⋯ → “Hap në shfletues”).</div>
@@ -87,18 +86,17 @@
     </div>
   </form>
 </div>
-<video id="src" playsinline muted preload="auto"></video>
-
 <script src="common.js"></script>
+<script src="timeline.js"></script>
 <script>
 /* “LAJMET VIDEO – safe margins” (Videolajm_Final.mogrt) rebuilt: the video fills the 1080×1920 frame;
    logo top-left; day number | red bar | place + month top-right; rubrika box and the quote over a see-through grey
    gradient at the bottom. Positions come from the template's own render; the timing follows it too:
    graphics build in over the first ~2.5 s and leave over the last ~2 s of their run, the logo stays. */
 const W=1080,H=1920;
-const cv=$("cv"),ctx=cv.getContext("2d"),vid=$("src");
-const S={photo:null,video:false,ox:0,oy:0,cat:"lajme",color:null,len:"end"};
-const LOGO=new Image();LOGO.onload=()=>draw();LOGO.src="logo.png";
+const cv=$("cv"),ctx=cv.getContext("2d");
+const S={ox:0,oy:0,cat:"lajme",color:null,len:"end"};
+const LOGO=new Image();LOGO.onload=()=>{if(!busy)draw(TL.time)};LOGO.src="logo.png";
 
 /* see-through grey gradient behind the quote: clear at its first line, ~97% at the bottom edge (measured from the template's render) */
 const SHADE_Y=1340,SHADE_STOPS=[[0,0],[.1,.08],[.2,.17],[.3,.33],[.4,.5],[.5,.62],[.6,.7],[.7,.78],[.8,.85],[.9,.92],[1,.97]];
@@ -110,8 +108,9 @@ const LENS=[["end","Në fund"],[8,"Pas 8 s"],[15,"Pas 15 s"]];
 const seg=(t,a,b)=>clamp((t-a)/(b-a));
 const ease=v=>1-Math.pow(1-clamp(v),3);
 
-/* how long the finished video is, and when the graphics have finished leaving */
-function total(){return S.video&&isFinite(vid.duration)?vid.duration:(S.len==="end"?10:S.len+1)}
+/* how long the finished video is (the timeline's length), and when the graphics have finished leaving */
+const emptyLength=()=>S.len==="end"?10:S.len+1;
+function total(){return TL.hasClips()?TL.total():emptyLength()}
 function gEnd(){const T=total();return S.len==="end"?T-0.15:Math.min(S.len,T-0.15)}
 
 /* animation state at time t (null = everything in place, for editing) */
@@ -132,11 +131,11 @@ function state(t){
 
 function drawMedia(){
   const z=+$("zoom").value/100;
-  if(S.video&&vid.readyState>=2){const r=coverRect(S,vid.videoWidth,vid.videoHeight,W,H,z);ctx.drawImage(vid,r.x,r.y,r.w,r.h);return}
-  if(S.photo){const r=coverRect(S,S.photo.width,S.photo.height,W,H,z);ctx.drawImage(S.photo,r.x,r.y,r.w,r.h);return}
+  const f=TL.frame();
+  if(f){const r=coverRect(S,f.w,f.h,W,H,z);ctx.drawImage(f.src,r.x,r.y,r.w,r.h);return}
   ctx.fillStyle="#3b3d41";ctx.fillRect(0,0,W,H);
   ctx.fillStyle="#56585d";ctx.font='500 44px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
-  ctx.fillText(S.video?"Duke ngarkuar videon…":"Ngarko një video",W/2,H*0.33);ctx.textAlign="left";
+  ctx.fillText(TL.hasClips()?"Duke ngarkuar videon…":"Ngarko një video",W/2,H*0.33);ctx.textAlign="left";
 }
 
 function draw(t=null){
@@ -193,117 +192,84 @@ function draw(t=null){
   ctx.restore();ctx.globalAlpha=1;
 }
 
-/* ---------- media ---------- */
-function setMedia(file){
-  if(!file)return;
-  $("result").hidden=true;
-  if(file.type.startsWith("image/")){
-    const i=new Image();i.onload=()=>{S.photo=i;S.video=false;vid.removeAttribute("src");vid.load();resetFrame();$("mediaInfo").textContent="Foto · videoja del "+fmt(total());sync()};
-    i.src=URL.createObjectURL(file);return;
-  }
-  if(!file.type.startsWith("video/")&&!/\.(mov|mp4|m4v|webm)$/i.test(file.name))return;
-  S.photo=null;S.video=true;$("mediaInfo").textContent="Duke hapur videon…";
-  if(vid.src)URL.revokeObjectURL(vid.src);
-  vid.muted=true;vid.src=URL.createObjectURL(file);vid.load();
-  /* iOS won't decode a single frame until the video has played once; a silent play/pause right after picking does it */
-  const p=vid.play();if(p)p.then(()=>vid.pause()).catch(()=>{});
-  const slow=setTimeout(()=>{if(vid.readyState<1)$("mediaInfo").textContent="Videoja po hapet ende… (videot e gjata ose 4K zgjasin pak)"},6000);
-  vid.onloadedmetadata=()=>{clearTimeout(slow);resetFrame();$("mediaInfo").textContent=`Video ${vid.videoWidth}×${vid.videoHeight} · ${fmt(vid.duration)}`;sync();seek(Math.min(3,vid.duration/2))};
-  vid.onloadeddata=()=>draw(+$("scrub").value);
-  vid.onerror=()=>{clearTimeout(slow);S.video=false;$("mediaInfo").textContent="Kjo video nuk hapet dot në këtë shfletues.";sync()};
-}
+/* ---------- media: everything lives on the timeline ---------- */
+const TL=createTimeline({
+  mount:$("tl"),
+  draw:t=>draw(t),
+  graphicsEnd:()=>gEnd(),
+  emptyLength,
+  onChange:()=>sync(),
+  onFirstMedia:()=>resetFrame(),
+  onPlayToggle:()=>{if(busy)stopReq=true;else preview()},
+  status:msg=>{$("mediaInfo").textContent=msg||(TL.hasClips()?`Kohëzgjatja ${fmt(TL.total())}`:"")},
+});
 function resetFrame(){S.ox=0;S.oy=0;$("zoom").value=100;$("frame").classList.add("has-photo")}
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
-/* show the frame at time t with the graphics as they are at t */
-function seek(t){
-  $("scrub").value=t;$("scrubOut").textContent=fmt(t);
-  if(S.video){if(!isFinite(vid.duration))return;vid.currentTime=Math.min(t,Math.max(0,vid.duration-0.05));vid.addEventListener("seeked",()=>draw(+$("scrub").value),{once:true});setTimeout(()=>draw(+$("scrub").value),400)}
-  else draw(t);
-}
+function addMedia(files){$("result").hidden=true;TL.addFiles(files,"end")}
 
 $("drop").onclick=()=>$("file").click();
 $("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
-$("file").onchange=e=>{setMedia(e.target.files[0]);e.target.value=""};
-["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop")setMedia(e.dataTransfer.files[0])}));
-setupFraming(cv,S,W,$("zoom"),()=>(S.photo||S.video)&&!busy,()=>draw(+$("scrub").value));
-$("scrub").addEventListener("input",()=>{if(!busy)seek(+$("scrub").value)});
+$("file").onchange=e=>{addMedia(e.target.files);e.target.value=""};
+["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop"&&e.dataTransfer.files.length)addMedia(e.dataTransfer.files)}));
+setupFraming(cv,S,W,$("zoom"),()=>TL.hasClips()&&!busy,()=>draw(TL.time));
 
 /* ---------- playback / recording ---------- */
-let busy=false,stopReq=false,actx=null,dest=null;
-/* video sound goes through Web Audio so the recording can carry it */
-function audioOut(){
-  if(actx)return dest;
-  try{
-    actx=new (window.AudioContext||window.webkitAudioContext)();
-    const srcNode=actx.createMediaElementSource(vid);
-    dest=actx.createMediaStreamDestination();srcNode.connect(dest);srcNode.connect(actx.destination);
-  }catch(e){dest=null}
-  return dest;
-}
-/* plays from 0 to the end, drawing every frame; video time drives the graphics so they stay in sync */
+let busy=false,stopReq=false;
+/* plays the whole timeline from the start, drawing every frame; the timeline's clock drives the graphics */
 async function run(onFrame){
   const T=total();
-  if(S.video){
-    vid.currentTime=0;await new Promise(r=>{vid.addEventListener("seeked",r,{once:true});setTimeout(r,1500)});
-    try{await vid.play()}catch(e){vid.muted=true;await vid.play()}   // a blocked play with sound still plays silently
-  }
-  const t0=performance.now();
-  await new Promise(res=>{
-    const step=()=>{
-      const t=S.video?vid.currentTime:(performance.now()-t0)/1000;
-      draw(Math.min(t,T));onFrame&&onFrame(t/T);
-      if(stopReq||t>=T||(S.video&&vid.ended))return res();
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
-  if(S.video)vid.pause();
+  await TL.play({from:0,to:T,onFrame:t=>{if(stopReq)TL.stop();onFrame&&onFrame(t/T)}});
 }
-/* iOS lets a video play with sound only when play() starts inside the tap itself; touch it right away */
-function unlock(){if(S.video){vid.muted=false;const p=vid.play();if(p)p.then(()=>vid.pause()).catch(()=>{})}}
-function setBusy(on){busy=on;$("play").hidden=on;$("stop").hidden=!on;$("saveVid").disabled=on;$("save").disabled=on;$("scrub").disabled=on}
-
-$("play").onclick=async()=>{
-  if(busy)return;unlock();setBusy(true);stopReq=false;
-  if(actx)actx.resume();
-  try{await run(t=>{$("scrub").value=t*total();$("scrubOut").textContent=fmt(t*total())})}catch(e){}
-  setBusy(false);seek(+$("scrub").value);
-};
-$("stop").onclick=()=>{stopReq=true};
+function setBusy(on){busy=on;$("saveVid").disabled=on;$("save").disabled=on}
+/* preview from the playhead (from the start if it is at the end), like Premiere's space bar */
+async function preview(){
+  if(busy)return;TL.unlock();setBusy(true);stopReq=false;
+  const {actx}=TL.audio();if(actx)actx.resume();
+  const from=TL.time>=total()-0.05?0:TL.time;
+  try{await TL.play({from,to:total(),onFrame:()=>{if(stopReq)TL.stop()}})}catch(e){}
+  setBusy(false);TL.show(TL.time);
+}
 
 $("saveVid").onclick=async()=>{
   if(busy)return;
   const st=$("status");
   if(!cv.captureStream||!window.MediaRecorder){st.textContent="Ky shfletues nuk mund të regjistrojë video. Provo Safari ose Chrome të përditësuar.";return}
-  unlock();setBusy(true);stopReq=false;$("result").hidden=true;
+  TL.unlock();setBusy(true);stopReq=false;$("result").hidden=true;
   const stream=cv.captureStream(30);
   let withAudio=false;
-  if(S.video){const d=audioOut();if(d){await actx.resume();d.stream.getAudioTracks().forEach(tr=>{stream.addTrack(tr);withAudio=true})}}
-  const type=pickRecType(withAudio);
-  if(!type){setBusy(false);st.textContent="Ky shfletues nuk mund të regjistrojë video.";return}
-  const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:10_000_000});
-  const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-  const done=new Promise(r=>rec.onstop=r);
+  if(TL.hasClips()){const {actx,dest}=TL.audio();if(dest){await actx.resume();dest.stream.getAudioTracks().forEach(tr=>{stream.addTrack(tr);withAudio=true})}}
+  if(!pickRecType(withAudio)){setBusy(false);st.textContent="Ky shfletues nuk mund të regjistrojë video.";return}
   /* phones: keep the screen awake; leaving the page would stall the recording */
   let lock=null,left=false;try{lock=await navigator.wakeLock?.request("screen")}catch(e){}
   const onVis=()=>{if(document.hidden)left=true};document.addEventListener("visibilitychange",onVis);
   st.textContent=`Duke regjistruar (${fmt(total())})… mbaje faqen hapur.`;$("prog").hidden=false;
+  /* some encoders give up mid-recording ("Video encoding failed"); then record again with the next format */
+  const failed=[];let type,chunks;
   try{
-    draw(0);rec.start(250);
-    await run(p=>{$("prog").value=p});
-    await new Promise(r=>setTimeout(r,200));
-    rec.stop();await done;
+    while((type=pickRecType(withAudio,failed))){
+      const rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:10_000_000});
+      chunks=[];let bad=false;rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+      rec.onerror=()=>{bad=true;TL.stop()};
+      const done=new Promise(r=>rec.onstop=r);
+      draw(0);rec.start(250);
+      await run(p=>{$("prog").value=p});
+      await new Promise(r=>setTimeout(r,200));
+      if(rec.state!=="inactive")rec.stop();await done;
+      if(!bad||stopReq||left)break;
+      failed.push(type);st.textContent=`Po provoj një format tjetër… (${fmt(total())})`;
+    }
   }finally{
     stream.getVideoTracks().forEach(tr=>tr.stop());
     document.removeEventListener("visibilitychange",onVis);lock?.release().catch(()=>{});
-    $("prog").hidden=true;setBusy(false);seek(+$("scrub").value);
+    $("prog").hidden=true;setBusy(false);TL.show(TL.time);
   }
   if(left){st.textContent="Regjistrimi u ndërpre sepse u largove nga faqja. Provo sërish dhe mbaje ekranin hapur.";return}
   if(stopReq){st.textContent="Regjistrimi u ndal.";return}
+  if(!type){st.textContent="Regjistrimi dështoi në këtë shfletues. Provo Safari ose Chrome.";return}
   const ext=type.startsWith("video/mp4")?"mp4":"webm";
   await saveFile(new Blob(chunks,{type:type.split(";")[0]}),ext,"albanianpost-video-"+slugOf($("title").value));
   if(ext==="webm")st.textContent+=" Ky shfletues e ruan si WebM; për MP4 përdor Safari ose Chrome të ri.";
-  if(S.video&&!withAudio)st.textContent+=" (pa zë)";
+  if(TL.hasClips()&&!withAudio)st.textContent+=" (pa zë)";
 };
 
 $("form").addEventListener("submit",async e=>{
@@ -321,8 +287,8 @@ function sync(){
   paintCats(S,$("catChips"),$("chips"),$("tag"));
   document.documentElement.style.setProperty("--red",$("color").value);
   [...$("lenChips").children].forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.l)===String(S.len)));
-  $("scrub").max=total().toFixed(2);
-  if(!busy)draw(+$("scrub").value);
+  TL.render();
+  if(!busy)draw(TL.time);
   store("ap-video-draft",JSON.stringify({cat:S.cat,color:$("color").value,tag:$("tag").value,title:$("title").value,size:$("size").value,place:$("place").value,len:S.len}));
 }
 $("color").addEventListener("input",()=>{S.color=$("color").value});
@@ -338,12 +304,12 @@ $("form").addEventListener("change",sync);
   try{const d=JSON.parse(load("ap-video-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;S.color=d.color||null;$("tag").value=d.tag??"KOSOVË";
     $("title").value=d.title??"";$("size").value=d.size??77;$("place").value=d.place??"PRISHTINË";if(d.len==="end"||d.len===8||d.len===15)S.len=d.len}}catch(e){}
   setupCats(S,$("catChips"),$("chips"),$("tag"),sync);
-  sync();seek(3);
+  sync();TL.show(3);
   Promise.all([
     document.fonts.load('700 77px "Noto Serif Display"',"ËÇë“”"),
     document.fonts.load('500 42px "Noto Serif Display"',"KOSOVË"),
     document.fonts.load('500 44px "IBM Plex Sans"',"Ngarko")
-  ]).catch(()=>{}).then(()=>{if(!busy)draw(+$("scrub").value)});
+  ]).catch(()=>{}).then(()=>{if(!busy)draw(TL.time)});
   scriptsRunning();
 })();
 </script>

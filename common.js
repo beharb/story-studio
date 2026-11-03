@@ -116,11 +116,11 @@ async function saveFile(blob,ext,name){
 }
 
 /* MP4 where the browser can record it (Safari, new Chrome), WebM otherwise */
-function pickRecType(withAudio){
+function pickRecType(withAudio,skip=[]){
   const types=withAudio
-    ?["video/mp4;codecs=avc1.42E01F,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm"]
-    :["video/mp4;codecs=avc1.42E01F","video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm"];
-  return types.find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
+    ?["video/mp4;codecs=avc1.42E01F,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"]
+    :["video/mp4;codecs=avc1.42E01F","video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
+  return types.find(m=>!skip.includes(m)&&window.MediaRecorder&&MediaRecorder.isTypeSupported(m));
 }
 
 /* shown until the page's script runs: file previews (Files, AirDrop, WhatsApp, Mail) don't run JavaScript */
