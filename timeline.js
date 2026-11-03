@@ -1,5 +1,6 @@
 /* Video Lajm editor: a small Premiere-style timeline.
-   V2 shows the template's graphics, V1 holds the clips (cut from any number of uploaded videos or photos), A1 their sound.
+   The graphics layers (the title, the name card…) sit on their own tracks above; V1 holds the clips (cut from any number
+   of uploaded videos or photos), A1 their sound.
    Clips sit end to end, so deleting one closes the gap. Tools: select (V), razor (C), cut at the playhead (⌘K),
    delete, insert at the playhead, drag to reorder, drag an edge to trim, undo/redo, zoom.
    Playback uses two <video> elements in turn (A/B roll): while one plays, the other is already parked on the next
@@ -23,10 +24,11 @@ function createTimeline(o){
     for(let i=0;i<clips.length;i++){const l=len(clips[i]);if(t<s+l-1e-6||i===clips.length-1)return {i,off:Math.max(0,Math.min(l,t-s)),start:s};s+=l}
     return null;
   }
-  const snap=()=>JSON.stringify({clips,sel:[...sel]});
-  function restore(s){const d=JSON.parse(s);clips=d.clips;sel=new Set(d.sel)}
+  /* undo snapshots hold the clips and the page's graphics layers (where the name card sits, whether it shows) */
+  const snap=()=>JSON.stringify({clips,sel:[...sel],L:o.layerState?o.layerState():null});
+  function restore(s){const d=JSON.parse(s);clips=d.clips;sel=new Set(d.sel);if(d.L&&o.setLayerState)o.setLayerState(d.L)}
   function commit(before){undo.push(before);if(undo.length>100)undo.shift();redo.length=0;changed()}
-  function changed(){time=Math.min(time,total());render();o.onChange&&o.onChange();show(time)}
+  function changed(){time=Math.min(time,total()||o.emptyLength());render();o.onChange&&o.onChange();show(time)}
 
   function splitAt(t,quiet){
     const a=at(t);if(!a)return false;
@@ -203,48 +205,51 @@ function createTimeline(o){
 
   /* ---------- UI ---------- */
   const R=o.mount;
+  const svg=p=>`<svg viewBox="0 0 16 16" aria-hidden="true">${p}</svg>`,st_=`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`;
   const ic={
-    play:'<svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>',
-    pause:'<svg viewBox="0 0 16 16"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z" fill="currentColor"/></svg>',
-    sel:'<svg viewBox="0 0 16 16"><path d="M3 1.5l9.5 7.2-4.3.4 2.4 4.9-1.8.8-2.4-4.9L3 13z" fill="currentColor"/></svg>',
-    razor:'<svg viewBox="0 0 16 16"><path d="M2 12.5L12.2 2.3a1.6 1.6 0 012.3 2.3L4.3 14.8H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 5l1.5 1.5" stroke="currentColor" stroke-width="1.5"/></svg>',
-    cut:'<svg viewBox="0 0 16 16"><circle cx="4" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 10.4L12 1.5M10.5 10.4L4 1.5" stroke="currentColor" stroke-width="1.5"/></svg>',
-    del:'<svg viewBox="0 0 16 16"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.7 9.5h5.6l.7-9.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
-    add:'<svg viewBox="0 0 16 16"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.8"/></svg>',
-    undo:'<svg viewBox="0 0 16 16"><path d="M5 3L2 6l3 3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6H10a3.5 3.5 0 010 7H6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
-    redo:'<svg viewBox="0 0 16 16"><path d="M11 3l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13.5 6H6a3.5 3.5 0 000 7h4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
-    zout:'<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.3 10.3L14 14M5 7h4" stroke="currentColor" stroke-width="1.5"/></svg>',
-    zin:'<svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.3 10.3L14 14M5 7h4M7 5v4" stroke="currentColor" stroke-width="1.5"/></svg>',
+    play:svg('<path d="M5 3v10l8-5z" fill="currentColor"/>'),
+    pause:svg('<path d="M4.5 3h2.6v10H4.5zM8.9 3h2.6v10H8.9z" fill="currentColor"/>'),
+    sel:svg('<path d="M3.5 2l9 6.6-4.1.5 2.3 4.6-1.7.8-2.3-4.6-3.2 2.9z" fill="currentColor"/>'),
+    razor:svg(`<path d="M3 13L12.6 3.4a1.5 1.5 0 012.1 2.1L5.1 15H3z" ${st_}/>`),
+    cut:svg(`<circle cx="4.2" cy="12" r="2.2" ${st_}/><circle cx="11.8" cy="12" r="2.2" ${st_}/><path d="M5.6 10.3L11.5 2M10.4 10.3L4.5 2" ${st_}/>`),
+    del:svg(`<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.6 4.5l.6 9h5.6l.6-9" ${st_}/>`),
+    add:svg(`<path d="M8 3v10M3 8h10" ${st_}/>`),
+    undo:svg(`<path d="M5.5 3.5L2.5 6.5l3 3" ${st_}/><path d="M3 6.5h7a3.3 3.3 0 010 6.6H6.5" ${st_}/>`),
+    redo:svg(`<path d="M10.5 3.5l3 3-3 3" ${st_}/><path d="M13 6.5H6a3.3 3.3 0 000 6.6h3.5" ${st_}/>`),
+    zout:svg(`<circle cx="7" cy="7" r="4.6" ${st_}/><path d="M10.4 10.4L14 14M5 7h4" ${st_}/>`),
+    zin:svg(`<circle cx="7" cy="7" r="4.6" ${st_}/><path d="M10.4 10.4L14 14M5 7h4M7 5v4" ${st_}/>`),
+    eye:svg(`<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" ${st_}/><circle cx="8" cy="8" r="2" ${st_}/>`),
+    eyeOff:svg(`<path d="M2.5 2.5l11 11M6.4 4A6.6 6.6 0 0114.5 8a10 10 0 01-1.9 2.4M10.1 12A6.7 6.7 0 011.5 8a10.5 10.5 0 012.6-3" ${st_}/>`),
   };
   R.innerHTML=`
   <div class="tl-bar">
-    <button type="button" class="tl-b tl-play" data-a="play" title="Luaj / ndalo (Space)">${ic.play}</button>
+    <button type="button" class="tl-play" data-a="play" title="Luaj / ndalo (Space)" aria-label="Luaj">${ic.play}</button>
     <span class="tl-tc"><b data-r="tc">00:00:00:00</b><span data-r="dur">00:00:00:00</span></span>
     <span class="tl-gap"></span>
-    <span class="tl-grp">
-      <button type="button" class="tl-b" data-a="select" title="Përzgjidh (V)">${ic.sel}</button>
-      <button type="button" class="tl-b" data-a="razor" title="Brisk — prek klipin ku do ta presësh (C)">${ic.razor}</button>
+    <span class="tl-seg" role="group" aria-label="Mjeti">
+      <button type="button" class="tl-b" data-a="select" title="Përzgjidh (V)" aria-label="Përzgjidh">${ic.sel}</button>
+      <button type="button" class="tl-b" data-a="razor" title="Brisk: prek klipin ku do ta presësh (C)" aria-label="Brisk">${ic.razor}</button>
     </span>
-    <span class="tl-grp">
+    <span class="tl-acts">
       <button type="button" class="tl-b tl-w" data-a="split" title="Prit te koka (⌘K)">${ic.cut}<span>Prit</span></button>
       <button type="button" class="tl-b tl-w" data-a="del" title="Fshi të zgjedhurën (Delete)">${ic.del}<span>Fshi</span></button>
       <button type="button" class="tl-b tl-w" data-a="add" title="Shto klip te koka">${ic.add}<span>Shto</span></button>
     </span>
-    <span class="tl-grp">
-      <button type="button" class="tl-b" data-a="undo" title="Zhbëj (⌘Z)">${ic.undo}</button>
-      <button type="button" class="tl-b" data-a="redo" title="Ribëj (⇧⌘Z)">${ic.redo}</button>
+    <span class="tl-seg">
+      <button type="button" class="tl-b" data-a="undo" title="Zhbëj (⌘Z)" aria-label="Zhbëj">${ic.undo}</button>
+      <button type="button" class="tl-b" data-a="redo" title="Ribëj (⇧⌘Z)" aria-label="Ribëj">${ic.redo}</button>
     </span>
-    <span class="tl-grp">
-      <button type="button" class="tl-b" data-a="zout" title="Zvogëlo (−)">${ic.zout}</button>
-      <button type="button" class="tl-b" data-a="zin" title="Zmadho (+)">${ic.zin}</button>
+    <span class="tl-seg">
+      <button type="button" class="tl-b" data-a="zout" title="Zvogëlo (−)" aria-label="Zvogëlo">${ic.zout}</button>
+      <button type="button" class="tl-b" data-a="zin" title="Zmadho (+)" aria-label="Zmadho">${ic.zin}</button>
     </span>
   </div>
   <div class="tl-body">
-    <div class="tl-heads"><div class="tl-hr"></div><div class="tl-h2"><b>V2</b><span>Grafika</span></div><div class="tl-h1"><b>V1</b><span>Video</span></div><div class="tl-ha"><b>A1</b><span>Zëri</span></div></div>
+    <div class="tl-heads" data-r="heads"></div>
     <div class="tl-scroll" data-r="scroll">
       <div class="tl-inner" data-r="inner">
         <canvas class="tl-ruler" data-r="ruler"></canvas>
-        <div class="tl-row tl-r2" data-r="v2"></div>
+        <div data-r="lrows"></div>
         <div class="tl-row tl-r1" data-r="v1"></div>
         <div class="tl-row tl-ra" data-r="a1"></div>
         <div class="tl-ins" data-r="ins" hidden></div>
@@ -252,50 +257,67 @@ function createTimeline(o){
       </div>
     </div>
   </div>
-  <div class="tl-empty" data-r="empty">Ngarko një video për ta prerë këtu. Prit me <b>✂ Prit</b> te koka ose me brisk, fshi pjesën e zgjedhur, shto klipe në mes, tërhiqi për t'i renditur.</div>
+  <div class="tl-empty" data-r="empty">Ngarko një video për ta prerë këtu. Prek një klip për ta zgjedhur, pastaj <b>Prit</b>, <b>Fshi</b> ose tërhiqe për ta renditur. <b>Shto</b> fut klipe te koka.</div>
   <input type="file" data-r="file" accept="video/*,image/*" multiple hidden>`;
   const q=r=>R.querySelector(`[data-r="${r}"]`);
-  const sc=q("scroll"),inner=q("inner"),ruler=q("ruler"),rv2=q("v2"),rv1=q("v1"),ra1=q("a1"),ph=q("ph"),ins=q("ins"),fileIn=q("file");
+  const sc=q("scroll"),inner=q("inner"),ruler=q("ruler"),heads=q("heads"),lrows=q("lrows"),rv1=q("v1"),ra1=q("a1"),ph=q("ph"),ins=q("ins"),fileIn=q("file");
+  const btn=a=>R.querySelector(`[data-a="${a}"]`);
   const tc=s=>{const f=Math.floor(Math.max(0,s)*FPS+1e-6),fr=f%FPS,ss=Math.floor(f/FPS)%60,mm=Math.floor(f/FPS/60)%60,hh=Math.floor(f/FPS/3600);
     return [hh,mm,ss,fr].map(n=>String(n).padStart(2,"0")).join(":")};
   const xOf=t=>PAD+t*pps,tOf=x=>Math.max(0,(x-PAD)/pps);
-  const span=()=>Math.max(total(),o.graphicsEnd?o.graphicsEnd():0,o.emptyLength());
+  const layers=()=>o.layers?o.layers():[];
+  const span=()=>Math.max(total(),o.emptyLength(),...layers().map(l=>l.on?l.end:0));
+  const css=n=>getComputedStyle(R).getPropertyValue(n).trim();
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  let lsel=null;                                         // the selected graphics layer (its id), or null
 
   function render(){
     const T=span(),Wd=Math.max(sc.clientWidth,xOf(T)+120);
     inner.style.width=Wd+"px";
     q("empty").hidden=clips.length>0;
-    /* V2: the template's graphics, with its build-in and build-out shaded */
-    const gE=o.graphicsEnd?o.graphicsEnd():0;
-    rv2.innerHTML=gE>0?`<div class="tl-g" style="left:${xOf(0)}px;width:${gE*pps}px"><span>LAJMET VIDEO · grafika</span>
-      <i style="left:0;width:${Math.min(2.5,gE)*pps}px"></i><i style="left:${Math.max(0,gE-2.1)*pps}px;width:${Math.min(2.1,gE)*pps}px"></i></div>`:"";
+    const L=layers();
+    /* track heads: graphics layers on top (V3, V2…), then the video and its sound */
+    heads.innerHTML=`<div class="tl-hr"></div>`+L.map((l,i)=>`<div class="tl-hl"><span class="tl-tn">V${L.length-i+1}</span><b>${esc(l.label)}</b>${l.toggle?
+      `<button type="button" class="tl-eye" data-eye="${l.id}" aria-pressed="${l.on}" title="${l.on?"Fshihe":"Shfaqe"}" aria-label="${l.on?"Fshihe":"Shfaqe"} ${esc(l.label)}">${l.on?ic.eye:ic.eyeOff}</button>`:""}</div>`).join("")+
+      `<div class="tl-h1"><span class="tl-tn">V1</span><b>Video</b></div><div class="tl-ha"><span class="tl-tn">A1</span><b>Zëri</b></div>`;
+    /* graphics layers: a bar from start to end, build-in and build-out shaded; a layer that is off shows a dashed outline to tap */
+    lrows.innerHTML=L.map(l=>{
+      const x=xOf(l.start),w=Math.max(8,(l.end-l.start)*pps),cls=`tl-l ${l.kind||""}${l.on?"":" off"}${lsel===l.id?" sel":""}`;
+      const sh=l.on&&l.shade?`<i class="tl-sh" style="left:0;width:${Math.min(l.shade[0],l.end-l.start)*pps}px"></i><i class="tl-sh" style="right:0;width:${Math.min(l.shade[1],l.end-l.start)*pps}px"></i>`:"";
+      return `<div class="tl-row tl-rl"><div class="${cls}" data-l="${l.id}" style="left:${x}px;width:${w}px">${sh}<span><b>${esc(l.on?l.label:"+ "+(l.offLabel||l.label))}</b>${l.on&&l.sub?` ${esc(l.sub)}`:""}</span>${l.on&&l.resize?'<i class="tl-tr r"></i>':""}</div></div>`;
+    }).join("");
     /* V1 + A1 */
     rv1.innerHTML="";ra1.innerHTML="";
-    const st=starts();
+    const st=starts(),wave=css("--tl-wave")||"#3d8fae";
     clips.forEach((c,i)=>{
       const m=media.get(c.m),x=xOf(st[i]),w=Math.max(2,len(c)*pps),s=sel.has(c.id);
       const d=document.createElement("div");d.className="tl-c"+(m.kind==="image"?" img":"")+(s?" sel":"");d.dataset.id=c.id;
-      d.style.left=x+"px";d.style.width=w+"px";
-      d.innerHTML=`<div class="tl-cn">${m.thumb?`<img src="${m.thumb}" alt="">`:""}<span>${esc(m.name)}</span></div><i class="tl-tr l"></i><i class="tl-tr r"></i>`;
+      d.style.left=x+"px";d.style.width=w+"px";if(m.thumb)d.style.backgroundImage=`url(${m.thumb})`;
+      d.innerHTML=`<span>${esc(m.name)}</span><i class="tl-tr l"></i><i class="tl-tr r"></i>`;
       rv1.appendChild(d);
       const a=document.createElement("div");a.className="tl-a"+(s?" sel":"")+(m.kind==="image"?" none":"");a.dataset.id=c.id;a.style.left=x+"px";a.style.width=w+"px";
-      if(m.kind==="video"){const cw=Math.min(Math.ceil(w),4000),cn=document.createElement("canvas");cn.width=cw;cn.height=36;a.appendChild(cn);drawWave(cn,m,c)}
+      if(m.kind==="video"){const cw=Math.min(Math.ceil(w),4000),cn=document.createElement("canvas");cn.width=cw;cn.height=30;a.appendChild(cn);drawWave(cn,m,c,wave)}
       ra1.appendChild(a);
     });
-    drawRuler();placeHead();
-    R.querySelector('[data-a="select"]').classList.toggle("on",tool==="select");
-    R.querySelector('[data-a="razor"]').classList.toggle("on",tool==="razor");
+    drawRuler();placeHead();paintSel();
+    btn("select").setAttribute("aria-pressed",tool==="select");btn("razor").setAttribute("aria-pressed",tool==="razor");
     sc.classList.toggle("razor",tool==="razor");
-    R.querySelector('[data-a="undo"]').disabled=!undo.length||locked;
-    R.querySelector('[data-a="redo"]').disabled=!redo.length||locked;
-    R.querySelector('[data-a="del"]').disabled=!sel.size||locked;
-    R.querySelector('[data-a="split"]').disabled=!clips.length||locked;
+    btn("undo").disabled=!undo.length||locked;btn("redo").disabled=!redo.length||locked;
+    btn("split").disabled=!clips.length||locked;
     q("dur").textContent=tc(total()||o.emptyLength());
   }
-  const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  function drawWave(cn,m,c){
+  /* selection changes only flip classes: rebuilding the clip under a finger would swallow the tap on phones */
+  function paintSel(){
+    R.querySelectorAll(".tl-c,.tl-a").forEach(e=>e.classList.toggle("sel",sel.has(+e.dataset.id)));
+    R.querySelectorAll(".tl-l").forEach(e=>e.classList.toggle("sel",lsel===e.dataset.l));
+    const l=layers().find(l=>l.id===lsel);
+    btn("del").disabled=locked||!(sel.size||(l&&l.toggle&&l.on));
+  }
+  function selectClips(ids){sel=new Set(ids);if(sel.size)lsel=null;paintSel()}
+  function selectLayer(id){lsel=id;if(id!=null)sel.clear();paintSel();o.onLayerSelect&&o.onLayerSelect(id)}
+  function drawWave(cn,m,c,col){
     const x=cn.getContext("2d"),w=cn.width,h=cn.height;x.clearRect(0,0,w,h);
-    x.fillStyle="rgba(170,220,245,.9)";
+    x.fillStyle=col;
     if(!m.peaks){x.fillRect(0,h/2-0.5,w,1);return}
     const p=m.peaks,a0=c.in*100,a1=c.out*100,k=(a1-a0)/w;
     for(let i=0;i<w;i++){
@@ -305,17 +327,17 @@ function createTimeline(o){
     }
   }
   function drawRuler(){
-    const w=sc.clientWidth,dpr=Math.min(2,window.devicePixelRatio||1),h=ruler.clientHeight||24;
+    const w=sc.clientWidth,dpr=Math.min(2,window.devicePixelRatio||1),h=ruler.clientHeight||26;
     ruler.width=w*dpr;ruler.height=h*dpr;ruler.style.width=w+"px";ruler.style.transform=`translateX(${sc.scrollLeft}px)`;
     const x=ruler.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);
     const steps=[1/FPS,5/FPS,0.5,1,2,5,10,15,30,60,120,300];
     const major=steps.find(s=>s*pps>=70)||600,minor=steps.filter(s=>s<major&&major/s>=4&&major/s<=10).pop()||major/5;
     const t0=tOf(sc.scrollLeft),t1=tOf(sc.scrollLeft+w);
-    x.font="10px "+getComputedStyle(R).fontFamily;x.fillStyle="#8d8d8d";x.strokeStyle="#5a5a5a";x.lineWidth=1;x.beginPath();
+    x.font="500 10px "+getComputedStyle(R).fontFamily;x.fillStyle=css("--muted")||"#6b6862";x.strokeStyle=css("--line")||"#dcd8d2";x.lineWidth=1;x.beginPath();
     for(let t=Math.floor(t0/minor)*minor;t<=t1+minor;t+=minor){
       const px=xOf(t)-sc.scrollLeft,isM=Math.abs(t/major-Math.round(t/major))<1e-6;
-      x.moveTo(Math.round(px)+.5,h);x.lineTo(Math.round(px)+.5,isM?h-10:h-5);
-      if(isM&&t>=0)x.fillText(major<1?tc(t).slice(3):tc(t).slice(3,8),px+3,11);
+      x.moveTo(Math.round(px)+.5,h);x.lineTo(Math.round(px)+.5,isM?h-9:h-4);
+      if(isM&&t>=0)x.fillText(major<1?tc(t).slice(3):tc(t).slice(3,8),px+4,12);
     }
     x.stroke();
   }
@@ -328,7 +350,12 @@ function createTimeline(o){
     const ax=cx??(xOf(time)-sc.scrollLeft),tAt=tOf(sc.scrollLeft+ax);
     pps=Math.max(4,Math.min(600,pps*f));render();sc.scrollLeft=Math.max(0,xOf(tAt)-ax);drawRuler();
   }
-  function lockUI(on){locked=on;R.classList.toggle("busy",on);R.querySelector('[data-a="play"]').innerHTML=on?ic.pause:ic.play;render()}
+  function lockUI(on){locked=on;R.classList.toggle("busy",on);const p=btn("play");p.innerHTML=on?ic.pause:ic.play;p.setAttribute("aria-label",on?"Ndalo":"Luaj");render()}
+  function deleteSel(){
+    if(sel.size)return removeSel();
+    const l=layers().find(l=>l.id===lsel);
+    if(l&&l.toggle&&l.on){const before=snap();o.onLayerToggle(l.id,false);lsel=null;commit(before)}
+  }
 
   /* toolbar */
   R.querySelector(".tl-bar").addEventListener("click",e=>{
@@ -337,13 +364,19 @@ function createTimeline(o){
     if(locked)return;
     if(a==="select"||a==="razor"){tool=a;render()}
     else if(a==="split"){const hit=splitAt(time);if(!hit)o.status&&o.status("Koka duhet të jetë brenda një klipi (jo në skaj).")}
-    else if(a==="del")removeSel();
+    else if(a==="del")deleteSel();
     else if(a==="add")fileIn.click();
     else if(a==="undo"&&undo.length){redo.push(snap());restore(undo.pop());changed()}
     else if(a==="redo"&&redo.length){undo.push(snap());restore(redo.pop());changed()}
     else if(a==="zin")zoom(1.5);else if(a==="zout")zoom(1/1.5);
   });
   fileIn.onchange=()=>{addFiles(fileIn.files,"playhead");fileIn.value=""};
+  /* the eye in a track head shows or hides that layer */
+  heads.addEventListener("click",e=>{
+    const b=e.target.closest("[data-eye]");if(!b||locked)return;
+    const l=layers().find(l=>l.id===b.dataset.eye);if(!l)return;
+    const before=snap();o.onLayerToggle(l.id,!l.on);lsel=l.on?(lsel===l.id?null:lsel):l.id;commit(before);
+  });
 
   /* scrubbing on the ruler or the playhead */
   const scrubFrom=el=>el.addEventListener("pointerdown",e=>{
@@ -352,27 +385,57 @@ function createTimeline(o){
     const mv=ev=>go(ev),up=()=>{el.removeEventListener("pointermove",mv);el.removeEventListener("pointerup",up);el.removeEventListener("pointercancel",up)};
     el.addEventListener("pointermove",mv);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);
   });
-  scrubFrom(ruler);scrubFrom(ph);
+  scrubFrom(ruler);scrubFrom(ph.querySelector("i"));
 
-  /* clips: select, razor, trim edges, drag to reorder; empty track area moves the playhead */
+  /* tracks. Mouse: press selects at once and dragging moves/trims. Touch: a tap selects (a swipe scrolls the timeline),
+     and a selected item can then be dragged or trimmed. Tapping empty track space moves the playhead. */
   inner.addEventListener("pointerdown",e=>{
     if(locked||e.target===ruler||e.target.closest(".tl-ph"))return;
-    const r=sc.getBoundingClientRect(),px=e.clientX-r.left+sc.scrollLeft,el=e.target.closest(".tl-c,.tl-a");
-    if(!el){if(e.target.closest(".tl-row")){sel.clear();render();show(tOf(px))}return}
-    const id=+el.dataset.id,i=clips.findIndex(c=>c.id===id),c=clips[i];if(!c)return;
-    if(tool==="razor"){e.preventDefault();show(tOf(px));splitAt(tOf(px));return}
+    const r=sc.getBoundingClientRect(),pxOf=ev=>ev.clientX-r.left+sc.scrollLeft,px=pxOf(e),touch=e.pointerType!=="mouse";
+    const lay=e.target.closest(".tl-l"),el=e.target.closest(".tl-c,.tl-a");
     const trim=e.target.classList.contains("tl-tr")?(e.target.classList.contains("l")?"l":"r"):null;
-    const multi=e.shiftKey||e.metaKey||e.ctrlKey,wasSel=sel.has(id);
-    if(multi){wasSel?sel.delete(id):sel.add(id);render();return}
-    if(!wasSel){sel=new Set([id]);render()}
-    /* touch: an unselected clip scrolls the timeline; once selected it can be trimmed or dragged */
-    if(e.pointerType==="touch"&&!wasSel&&!trim)return;
+    const id=lay?lay.dataset.l:el?+el.dataset.id:null;
+    const L=lay?layers().find(l=>l.id===id):null,i=el?clips.findIndex(c=>c.id===id):-1,c=clips[i];
+    if((lay&&!L)||(el&&!c))return;
+    if(el&&tool==="razor"){e.preventDefault();show(tOf(px));splitAt(tOf(px));return}
+    const wasSel=lay?lsel===id:el?sel.has(id):false;
+    if(el&&(e.shiftKey||e.metaKey||e.ctrlKey)){const s=new Set(sel);wasSel?s.delete(id):s.add(id);selectClips(s);return}
+
+    /* a tap: select (or turn on an off layer), or move the playhead on empty track space */
+    const tap=()=>{
+      if(lay){if(!L.on){const before=snap();o.onLayerToggle(id,true);lsel=id;commit(before);o.onLayerSelect&&o.onLayerSelect(id)}
+        else if(wasSel)show(tOf(px));else selectLayer(id)}
+      else if(el){if(wasSel){if(sel.size>1)selectClips([id]);else show(tOf(px))}else selectClips([id])}
+      else if(e.target.closest(".tl-row")){if(sel.size||lsel)selectLayer(null);show(tOf(px))}
+    };
+    const canDrag=(lay&&L.on&&(L.move||(trim&&L.resize)))||(el&&!!c);
+    if(touch&&(!wasSel||!canDrag)){
+      /* wait: if the finger travels it is a scroll (the browser takes it and cancels), otherwise it is a tap */
+      const x0=e.clientX,y0=e.clientY;let gone=false;
+      const mv=ev=>{if(Math.hypot(ev.clientX-x0,ev.clientY-y0)>8)gone=true};
+      const end=ev=>{window.removeEventListener("pointermove",mv);window.removeEventListener("pointerup",end);window.removeEventListener("pointercancel",end);
+        if(ev.type==="pointerup"&&!gone)tap()};
+      window.addEventListener("pointermove",mv);window.addEventListener("pointerup",end);window.addEventListener("pointercancel",end);
+      return;
+    }
+    if(!canDrag){tap();return}
+    if(!wasSel){if(lay)selectLayer(id);else selectClips([id])}
     e.preventDefault();try{inner.setPointerCapture(e.pointerId)}catch(_){}
-    const before=snap(),x0=e.clientX,m=media.get(c.m),o0={in:c.in,out:c.out},st0=starts()[i];let moved=false,dropAt=null;
+    const before=snap(),x0=e.clientX;let moved=false,dropAt=null;
+    const m=c&&media.get(c.m),o0=c&&{in:c.in,out:c.out},st0=c?starts()[i]:0,l0=L&&{start:L.start,len:L.end-L.start};
     const mv=ev=>{
       const dx=ev.clientX-x0,dt=dx/pps;
       if(!moved&&Math.abs(dx)<5)return;moved=true;
-      if(trim==="l"){
+      if(lay){
+        /* graphics layer: drag moves it, the right edge sets how long it stays; snaps to the playhead and the clip cuts */
+        const pts=[0,time,...starts(),total()],snapT=t=>{for(const p of pts)if(Math.abs(xOf(p)-xOf(t))<8)return p;return t};
+        let s=l0.start,n=l0.len;
+        if(trim==="r"){n=Math.max(L.minLen||1,snapT(l0.start+l0.len+dt)-l0.start)}
+        else{s=snapT(l0.start+dt);const e2=snapT(s+n);if(e2!==s+n)s=e2-n}
+        s=Math.max(L.minStart||0,s);
+        o.onLayer(id,{start:s,len:n});render();                // the layers around it follow (the title ends where the name starts)
+        show(trim==="r"?s+n-0.5:s+Math.min(1.2,n));
+      }else if(trim==="l"){
         if(m.kind==="video")c.in=Math.max(0,Math.min(o0.out-MIN,o0.in+dt));else c.out=Math.max(MIN,Math.min(IMG_MAX,o0.out-dt));
         render();show(st0);
       }else if(trim==="r"){
@@ -380,16 +443,16 @@ function createTimeline(o){
         render();show(st0+len(c)-1/FPS);
       }else{
         /* reorder: drop between clips, at the boundary nearest the pointer */
-        const p=ev.clientX-r.left+sc.scrollLeft,st=starts();let best=0,bd=1e9;
+        const p=pxOf(ev),st=starts();let best=0,bd=1e9;
         for(let j=0;j<=clips.length;j++){const bx=xOf(j<clips.length?st[j]:total()),d=Math.abs(bx-p);if(d<bd){bd=d;best=j}}
         dropAt=best;ins.hidden=false;ins.style.transform=`translateX(${xOf(best<clips.length?st[best]:total())}px)`;
         const g=rv1.querySelector(`.tl-c[data-id="${id}"]`);if(g){g.style.transform=`translateX(${dx}px)`;g.classList.add("drag")}
       }
     };
-    const up=()=>{
+    const up=ev=>{
       inner.removeEventListener("pointermove",mv);inner.removeEventListener("pointerup",up);inner.removeEventListener("pointercancel",up);ins.hidden=true;
-      if(!moved){if(wasSel&&!trim){if(sel.size>1){sel=new Set([id]);render()}else show(tOf(x0-r.left+sc.scrollLeft))/* second tap parks the playhead there */}return}
-      if(trim)commit(before);
+      if(!moved){if(wasSel&&ev.type==="pointerup")tap();return}
+      if(lay||trim)commit(before);
       else if(dropAt!=null&&dropAt!==i&&dropAt!==i+1)moveClip(id,dropAt,before);
       else render();
     };
@@ -408,6 +471,8 @@ function createTimeline(o){
   sc.addEventListener("touchmove",e=>{if(pin&&e.touches.length===2){e.preventDefault();const [a,b]=e.touches;const f=pin.p*(Math.abs(a.clientX-b.clientX)||1)/pin.d/pps;zoom(f,pin.cx)}},{passive:false});
   sc.addEventListener("touchend",e=>{if(e.touches.length<2)pin=null},{passive:true});
   window.addEventListener("resize",()=>render());
+  /* the theme can change while the page is open; the ruler and waveforms are drawn with its colours */
+  window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>render());
 
   /* Premiere shortcuts */
   document.addEventListener("keydown",e=>{
@@ -415,20 +480,21 @@ function createTimeline(o){
     const k=e.key.toLowerCase(),mod=e.metaKey||e.ctrlKey;
     if(k===" "){e.preventDefault();return o.onPlayToggle()}
     if(locked)return;
-    if(mod&&k==="z"){e.preventDefault();R.querySelector(`[data-a="${e.shiftKey?"redo":"undo"}"]`).click();return}
-    if(mod&&k==="k"){e.preventDefault();R.querySelector('[data-a="split"]').click();return}
+    if(mod&&k==="z"){e.preventDefault();btn(e.shiftKey?"redo":"undo").click();return}
+    if(mod&&k==="k"){e.preventDefault();btn("split").click();return}
     if(mod)return;
     if(k==="v"){tool="select";render()}
     else if(k==="c"){tool="razor";render()}
-    else if(k==="delete"||k==="backspace"){if(sel.size){e.preventDefault();removeSel()}}
+    else if(k==="delete"||k==="backspace"){if(sel.size||lsel){e.preventDefault();deleteSel()}}
     else if(k==="arrowleft"||k==="arrowright"){e.preventDefault();show(time+(k==="arrowleft"?-1:1)*(e.shiftKey?1:1/FPS))}
     else if(k==="home"){show(0)}else if(k==="end"){show(total())}
     else if(k==="="||k==="+")zoom(1.5);else if(k==="-")zoom(1/1.5);
-    else if(k==="escape"){sel.clear();render()}
+    else if(k==="escape"){selectLayer(null)}
   });
 
   return {
     get time(){return time},total,frame,show,play,stop,unlock,audio,addFiles,render,fit,
     hasClips:()=>clips.length>0,isPlaying:()=>playing,
+    get selectedLayer(){return lsel},selectLayer:id=>{selectLayer(id)},
   };
 }

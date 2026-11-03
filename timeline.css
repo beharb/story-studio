@@ -1,62 +1,96 @@
-/* Video Lajm timeline: Premiere Pro's dark panel look in both themes */
-.tl{--tl-bg:#1e1e1e;--tl-panel:#262626;--tl-row:#2a2a2a;--tl-row2:#252525;--tl-line:#3a3a3a;--tl-fg:#d6d6d6;--tl-mut:#8d8d8d;
-  --tl-vid:#3d7fa1;--tl-vid-d:#2a5f7b;--tl-img:#7a5aa8;--tl-aud:#20708c;--tl-gfx:#7a2f7e;--tl-ph:#3d8bfd;
-  width:100%;background:var(--tl-bg);color:var(--tl-fg);border-radius:12px;overflow:hidden;border:1px solid #111;
+/* Video Lajm timeline: Premiere's layout (tracks, ruler, playhead) in the app's own look: panel, lines, chips, red accent */
+.tl{--tl-head:96px;--tl-wave:#3d8fae;--tl-clip:#2c2f34;--tl-img:#4a3f5c;--tl-aud:color-mix(in srgb,#3d8fae 16%,var(--panel));
+  width:100%;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:14px;overflow:hidden;
   font-family:var(--ui);font-size:12px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-.tl-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--tl-panel);border-bottom:1px solid #111;flex-wrap:wrap}
-.tl-b{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:30px;padding:0 7px;border-radius:6px;
-  border:1px solid transparent;background:transparent;color:var(--tl-fg);font:inherit;font-weight:600;cursor:pointer}
-.tl-b svg{width:16px;height:16px;flex:none}
-.tl-b:hover{background:#333}
-.tl-b.on{background:#3a3a3a;border-color:#4a4a4a;color:#fff;box-shadow:inset 0 -2px 0 var(--tl-ph)}
-.tl-b:disabled{opacity:.35;cursor:default;background:transparent}
-.tl-b:focus-visible{outline:2px solid var(--tl-ph);outline-offset:1px}
-.tl-play{background:#333;width:38px}
-.tl-grp{display:inline-flex;gap:2px;padding-left:6px;border-left:1px solid var(--tl-line)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .tl{--tl-wave:#7cc3dd;--tl-clip:#3a3e45;--tl-img:#5b4d70}}
+:root[data-theme="dark"] .tl{--tl-wave:#7cc3dd;--tl-clip:#3a3e45;--tl-img:#5b4d70}
+
+/* toolbar */
+.tl-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tl-play{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--red);color:var(--red-ink);display:grid;place-items:center;cursor:pointer}
+.tl-play svg{width:16px;height:16px}
+.tl-tc{display:flex;flex-direction:column;line-height:1.2;font-variant-numeric:tabular-nums}
+.tl-tc b{font-size:15px;font-weight:600;letter-spacing:.01em}
+.tl-tc span{color:var(--muted);font-size:11px}
 .tl-gap{flex:1}
-.tl-tc{display:flex;flex-direction:column;line-height:1.15;font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
-.tl-tc b{color:var(--tl-ph);font-size:14px;font-weight:600}
-.tl-tc span{color:var(--tl-mut);font-size:10px}
+.tl-seg,.tl-acts{display:inline-flex;gap:4px}
+.tl-b{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;height:34px;padding:0 9px;border-radius:9px;
+  border:1px solid var(--line);background:transparent;color:var(--fg);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.tl-b svg{width:16px;height:16px;flex:none}
+.tl-b[aria-pressed=true]{background:var(--red);border-color:var(--red);color:var(--red-ink)}
+.tl-b:disabled{opacity:.4;cursor:default}
+@media (hover:hover){.tl-b:not(:disabled):not([aria-pressed=true]):hover{background:var(--field)}}
+.tl-b:focus-visible,.tl-play:focus-visible,.tl-eye:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+
+/* tracks */
 .tl-body{display:flex}
-.tl-heads{flex:none;width:58px;background:var(--tl-panel);border-right:1px solid #111}
-.tl-heads>div{display:flex;flex-direction:column;justify-content:center;padding:0 8px;border-bottom:1px solid #111;gap:1px}
-.tl-heads b{font-size:11px;color:#e8e8e8}.tl-heads span{font-size:9px;color:var(--tl-mut);text-transform:uppercase;letter-spacing:.04em}
-.tl-hr{height:24px}.tl-h2{height:28px}.tl-h1{height:54px}.tl-ha{height:44px}
-.tl-scroll{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#555 transparent}
+.tl-heads{flex:none;width:var(--tl-head);border-right:1px solid var(--line)}
+.tl-heads>div{display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;border-bottom:1px solid var(--line)}
+.tl-heads b{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tl-tn{flex:none;font-size:9px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 3px;line-height:1.2}
+.tl-eye{margin-left:auto;flex:none;width:26px;height:26px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--fg);cursor:pointer;padding:0}
+.tl-eye svg{width:16px;height:16px}
+.tl-eye[aria-pressed=false]{color:var(--muted)}
+.tl-hr,.tl-ruler{height:26px}
+.tl-hl,.tl-rl{height:36px}
+.tl-h1,.tl-r1{height:56px}
+.tl-ha,.tl-ra{height:40px}
+.tl-heads .tl-hr{border-bottom:1px solid var(--line)}
+.tl-scroll{flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
 .tl-scroll.razor .tl-c,.tl-scroll.razor .tl-a{cursor:crosshair}
 .tl-inner{position:relative;min-width:100%}
-.tl-ruler{display:block;height:24px;background:#1a1a1a;border-bottom:1px solid #111;touch-action:none;cursor:ew-resize}
-.tl-row{position:relative;border-bottom:1px solid #111}
-.tl-r2{height:28px;background:var(--tl-row2)}.tl-r1{height:54px;background:var(--tl-row)}.tl-ra{height:44px;background:var(--tl-row2)}
-.tl-g{position:absolute;top:3px;bottom:3px;background:var(--tl-gfx);border-radius:3px;overflow:hidden;border:1px solid #9a4a9e}
-.tl-g span{position:relative;z-index:1;display:block;padding:4px 6px;font-size:10px;font-weight:600;color:#f3dff4;white-space:nowrap}
-.tl-g i{position:absolute;top:0;bottom:0;background:rgba(0,0,0,.22)}
-.tl-c,.tl-a{position:absolute;top:3px;bottom:3px;border-radius:3px;overflow:hidden;cursor:pointer;touch-action:pan-x;box-sizing:border-box}
-.tl-c{background:var(--tl-vid-d);border:1px solid #4f93b5}
-.tl-c.img{background:#57407a;border-color:#8c6cbc}
-.tl-cn{display:flex;align-items:center;gap:5px;height:16px;padding-right:4px;background:var(--tl-vid);font-size:10px;font-weight:600;color:#eaf6fc;white-space:nowrap;overflow:hidden}
-.tl-c.img .tl-cn{background:var(--tl-img)}
-.tl-cn img{height:46px;width:auto;align-self:flex-start;margin-right:2px;pointer-events:none}
-.tl-cn span{overflow:hidden;text-overflow:ellipsis;pointer-events:none}
-.tl-a{background:var(--tl-aud);border:1px solid #2f8fb0}
-.tl-a.none{background:transparent;border:1px dashed #3a3a3a}
+.tl-ruler{display:block;border-bottom:1px solid var(--line);touch-action:none;cursor:ew-resize}
+.tl-row{position:relative;border-bottom:1px solid var(--line);background:var(--field)}
+.tl-row.tl-ra{background:var(--panel)}
+
+/* graphics layers */
+.tl-l{position:absolute;top:4px;bottom:4px;border-radius:7px;overflow:hidden;cursor:pointer;touch-action:pan-x;box-sizing:border-box;
+  display:flex;align-items:center;background:color-mix(in srgb,var(--fg) 12%,var(--panel));border:1px solid color-mix(in srgb,var(--fg) 28%,var(--panel))}
+.tl-l span{position:relative;z-index:1;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--fg)}
+.tl-l span b{font-weight:600}
+.tl-l.name{background:var(--red);border-color:var(--red)}
+.tl-l.name span{color:var(--red-ink)}
+.tl-l.off{background:transparent;border:1.5px dashed var(--line)}
+.tl-l.off span{color:var(--muted)}
+.tl-sh{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--fg) 10%,transparent)}
+.tl-l.name .tl-sh{background:rgba(0,0,0,.18)}
+
+/* clips: a film strip of the clip's first frame under its name */
+.tl-c,.tl-a{position:absolute;top:4px;bottom:4px;border-radius:7px;overflow:hidden;cursor:pointer;touch-action:pan-x;box-sizing:border-box}
+.tl-c{background:var(--tl-clip) repeat-x left center/auto 100%}
+.tl-c.img{background-color:var(--tl-img)}
+.tl-c span{position:absolute;left:4px;top:4px;max-width:calc(100% - 8px);padding:2px 6px;border-radius:5px;background:rgba(0,0,0,.55);color:#fff;
+  font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.tl-a{background:var(--tl-aud)}
+.tl-a.none{background:transparent;border:1px dashed var(--line)}
 .tl-a canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.tl-c.sel,.tl-a.sel{border:2px solid #f2f2f2;filter:brightness(1.18);touch-action:none}
-.tl-c.drag{opacity:.75;z-index:3;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+
+/* selection: a red ring; a selected item can be dragged and trimmed, also by touch */
+.tl-c.sel,.tl-a.sel,.tl-l.sel{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--red);touch-action:none;z-index:2}
+.tl-c.drag{opacity:.8;z-index:3}
 .tl-tr{position:absolute;top:0;bottom:0;width:12px;display:none;cursor:ew-resize;touch-action:none;z-index:2}
-.tl-tr.l{left:0;background:linear-gradient(90deg,rgba(255,215,0,.85) 0 3px,transparent 3px)}
-.tl-tr.r{right:0;background:linear-gradient(270deg,rgba(255,215,0,.85) 0 3px,transparent 3px)}
-.tl-c.sel .tl-tr{display:block}
-@media (pointer:coarse){.tl-tr{width:22px}.tl-b{height:36px;min-width:36px}.tl-ruler{height:30px}.tl-hr{height:30px}}
-@media (hover:hover){.tl-c:hover .tl-tr{display:block}}
-.tl-ins{position:absolute;top:24px;bottom:0;width:3px;margin-left:-1px;background:#ffd400;z-index:4;pointer-events:none}
-.tl-ph{position:absolute;top:0;bottom:0;left:0;width:0;z-index:5;cursor:ew-resize;touch-action:none}
-.tl-ph::before{content:"";position:absolute;top:0;bottom:0;left:-.5px;width:1px;background:var(--tl-ph)}
-.tl-ph i{position:absolute;top:0;left:-7px;width:14px;height:16px;background:var(--tl-ph);clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%)}
-.tl-ph::after{content:"";position:absolute;top:0;bottom:0;left:-10px;width:20px}
-.tl-empty{padding:10px 12px;color:var(--tl-mut);font-size:12px;border-top:1px solid #111;line-height:1.4}
-.tl-empty b{color:var(--tl-fg)}
-.tl.busy .tl-scroll{pointer-events:none}
-@media (max-width:560px){.tl-w span{display:none}.tl-gap{display:none}.tl-tc{margin-right:auto}}
+.tl-tr::after{content:"";position:absolute;top:22%;bottom:22%;width:3px;border-radius:2px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.tl-tr.l{left:0}.tl-tr.l::after{left:3px}
+.tl-tr.r{right:0}.tl-tr.r::after{right:3px}
+.sel>.tl-tr{display:block}
+@media (hover:hover){.tl-c:hover>.tl-tr,.tl-l:hover>.tl-tr{display:block}}
+@media (pointer:coarse){.tl-tr{width:24px}.tl-b{height:40px;min-width:40px}.tl-hr,.tl-ruler{height:32px}}
+
+.tl-ins{position:absolute;top:26px;bottom:0;width:3px;margin-left:-1px;background:var(--red);z-index:4;pointer-events:none}
+/* the playhead line lets taps through to the clips under it; only its handle up in the ruler is grabbed */
+.tl-ph{position:absolute;top:0;bottom:0;left:0;width:0;z-index:5;pointer-events:none}
+.tl-ph::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:2px;background:var(--red)}
+.tl-ph i{position:absolute;top:0;left:-14px;width:28px;height:26px;pointer-events:auto;cursor:ew-resize;touch-action:none}
+.tl-ph i::before{content:"";position:absolute;top:2px;left:7px;width:14px;height:16px;background:var(--red);border-radius:3px 3px 0 0;clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
+.tl-empty{padding:10px 14px 12px;color:var(--muted);font-size:12px;line-height:1.45}
+.tl-empty b{color:var(--fg);font-weight:600}
+.tl.busy .tl-scroll,.tl.busy .tl-heads{pointer-events:none}
+@media (max-width:560px){
+  .tl-bar{gap:6px;padding:8px}
+  .tl-gap{display:none}.tl-tc{margin-right:auto}
+  .tl-acts{order:5;flex:1}.tl-acts .tl-b{flex:1}
+  .tl-seg{order:6}
+  .tl{--tl-head:78px}.tl-heads b{font-size:11px}.tl-tn{display:none}
+}
 /* the two hidden players; iOS only decodes a video it treats as visible, so they stay on screen, nearly transparent */
 .tl-dec{position:fixed;left:0;bottom:0;width:64px;height:36px;opacity:.01;pointer-events:none;z-index:-1}
