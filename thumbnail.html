@@ -105,6 +105,23 @@ function headLines(size){
   return lines;
 }
 
+/* one headline line at baseline 0 (inside the squeezed transform). Walburn's marks are small and stay inside
+   the red box; the stand-in's are not, so: Ë is drawn as E plus Walburn-sized dots (9 px, just above the
+   capital, reaching the box top), and anything below the baseline (comma, Q, Ç) is pressed up to fit the box */
+function headLine(l,x,size){
+  const k=size/100,plain=l.replace(/Ë/g,"E"),room=size*0.11,desc=ctx.measureText(plain).actualBoundingBoxDescent;
+  if(desc<=room)ctx.fillText(plain,x,0);
+  else{
+    ctx.save();ctx.beginPath();ctx.rect(-50,-size*2,W*2,size*2+1);ctx.clip();ctx.fillText(plain,x,0);ctx.restore();
+    ctx.save();ctx.beginPath();ctx.rect(-50,1,W*2,size);ctx.clip();ctx.scale(1,room/desc);ctx.fillText(plain,x,0);ctx.restore();
+  }
+  const e=ctx.measureText("E"),cx=(e.actualBoundingBoxRight-e.actualBoundingBoxLeft)/2,gap=9.2*k;
+  for(let j=l.indexOf("Ë");j>=0;j=l.indexOf("Ë",j+1)){
+    const at=x+ctx.measureText(plain.slice(0,j)).width+cx;
+    [-gap,gap].forEach(d=>{ctx.beginPath();ctx.ellipse(at+d,-81*k,4.6*k,4.6*k,0,0,Math.PI*2);ctx.fill()});
+  }
+}
+
 function draw(){
   ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
   ctx.fillStyle="#2a2523";ctx.fillRect(0,0,W,H);
@@ -137,7 +154,7 @@ function draw(){
   ctx.fillStyle="#fff";
   lines.forEach((l,i)=>{
     const y=top+i*pitch+size*0.85,m=ctx.measureText(l);
-    ctx.save();ctx.translate(TEXT_X,y);ctx.scale(HEAD_SX,1);ctx.fillText(l,m.actualBoundingBoxLeft,0);ctx.restore();
+    ctx.save();ctx.translate(TEXT_X,y);ctx.scale(HEAD_SX,1);headLine(l,m.actualBoundingBoxLeft,size);ctx.restore();
   });
 
   /* presenter name, right-aligned under the cut-out */
