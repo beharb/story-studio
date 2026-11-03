@@ -1,9 +1,11 @@
 /* Keeps a copy of the app on the phone so it opens without internet.
    Online it always fetches the newest files first (3 s limit), so an upload to the site shows up on the next launch. */
-const CACHE = "story-studio-v3";
+const CACHE = "story-studio-v4";
 const FILES = [
-  "./", "./index.html", "./stories.html", "./fotolajm.html", "./videolajm.html",
+  "./", "./index.html", "./stories.html", "./fotolajm.html", "./videolajm.html", "./thumbnail.html",
   "./common.css", "./common.js", "./fonts.css", "./logo.png", "./foto-overlay.webp",
+  "./thumb-base.webp", "./thumb-top.webp", "./thumb-mask.png", "./thumb-grain.webp",
+  "./p-andi.webp", "./p-altina.webp", "./p-armati.webp", "./p-dreni.webp", "./p-anmo.webp", "./p-emira.webp", "./p-joni.webp",
   "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
 ];
 

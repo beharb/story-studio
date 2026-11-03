@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="sq">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Albanian Post Thumbnail</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="AP Studio">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#cc2424">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="common.css">
+<style>
+.frame{aspect-ratio:9/16}
+@media (max-width:820px){.frame{height:auto;width:min(100%,420px,calc(62vh*9/16));width:min(100%,420px,calc(62svh*9/16))}}
+</style>
+
+<header><a class="back" href="./">← Menyja</a><span class="mark">Albanian Post</span><span class="sub">Thumbnail · 1080 × 1920</span></header>
+
+<div class="inapp" id="nojs" style="max-width:1100px;margin:0 auto 18px">
+  <b>Kjo faqe nuk po punon këtu.</b> Je duke e parë si pamje paraprake (Files, WhatsApp, Mail…), ku fotot nuk funksionojnë.
+  Në iPhone hape nga një <b>link</b> (adresë interneti) në <b>Safari</b> ose Chrome.
+</div>
+
+<div class="app">
+  <div class="stage">
+    <div class="frame" id="frame">
+      <canvas id="cv" width="1080" height="1920" aria-label="Pamja e thumbnail-it"></canvas>
+    </div>
+    <div class="hint">Tërhiqe foton për ta lëvizur; me dy gishta e zmadhon.</div>
+  </div>
+
+  <form class="panel" id="form" autocomplete="off">
+    <div class="group">
+      <span class="lab">Prezantuesi</span>
+      <div class="chips" id="people"></div>
+      <label for="name" style="margin-top:6px">Emri</label>
+      <input type="text" id="name" maxlength="32">
+    </div>
+
+    <div class="group">
+      <span class="lab">Fotoja e temës</span>
+      <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko foton</b><br>ose tërhiqe këtu, ose ngjite (Ctrl/Cmd+V)</div>
+      <input type="file" id="file" accept="image/*" hidden>
+      <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
+    </div>
+
+    <div class="group">
+      <label for="title">Titulli</label>
+      <textarea id="title" maxlength="120">Sa është shtrenjtuar jeta në Kosovë?</textarea>
+      <div class="small">Enter e ndan rreshtin aty ku do ti.</div>
+      <div class="row"><span class="small">Madhësia</span><input type="range" id="size" min="80" max="110" step="1" value="100"><output id="sizeOut">100</output></div>
+      <div class="row"><span class="small">Lart / poshtë</span><input type="range" id="lift" min="-300" max="100" step="5" value="0"><output id="liftOut">0</output></div>
+    </div>
+
+    <div class="inapp" id="inapp" hidden>Je brenda Instagramit ose Facebook-ut, ku skedarët nuk ruhen dot. Hape këtë faqe në Safari ose Chrome (menyja ⋯ → “Hap në shfletues”).</div>
+    <div class="btns"><button type="submit" class="btn primary" id="save">Ruaj PNG</button></div>
+    <div class="status" id="status" role="status"></div>
+    <div class="result" id="result" hidden>
+      <img id="resultImg" alt="Thumbnail-i i gatshëm" hidden>
+      <video id="resultVid" controls muted playsinline loop hidden></video>
+      <button type="button" class="btn primary" id="shareBtn" hidden>Ruaj në telefon</button>
+      <div class="small" id="resultHint" style="text-align:center">Ose mbaje shtypur foton → “Ruaj”.</div>
+    </div>
+  </form>
+</div>
+
+<script src="common.js"></script>
+<script>
+/* AlbanianPost_TikTok_1080x1920.psd (ESSENTIAL GRAPHICS / THUMBNAILS) rebuilt. Layers, bottom to top:
+   dark background + torn archive paper (white 38 px edge) · topic photo, shown only inside the paper ·
+   red tear + logo · presenter cut-out (white 16 px edge) · one red box per headline line + headline ·
+   presenter name · grain (overlay, 35%). Box geometry follows "Albanian Post - Rregullo kutite.jsx". */
+const W=1080,H=1920;
+const cv=$("cv"),ctx=cv.getContext("2d");
+const S={photo:null,ox:0,oy:0,who:"dreni"};
+const PEOPLE={
+  andi:{label:"Andi",name:"ANDI HAXHIU"},altina:{label:"Altina",name:"ALTINA MARMULLAKU"},armati:{label:"Armati",name:"ARMAT MATOSHI"},
+  dreni:{label:"Dreni",name:"DRENI HIMBEQA"},anmo:{label:"Anmo",name:"ANNAMOREA TIARA NIXHA"},emira:{label:"Emira",name:"EMIRA MULAKU"},
+  joni:{label:"Joni",name:"JON HAXHIU"}
+};
+const img=src=>{const i=new Image();i.onload=()=>draw();i.src=src;return i};
+const BASE=img("thumb-base.webp"),TOP=img("thumb-top.webp"),MASK=img("thumb-mask.png"),GRAIN=img("thumb-grain.webp");
+const CUT={};Object.keys(PEOPLE).forEach(k=>CUT[k]=img(`p-${k}.webp`));
+const ok=i=>i.complete&&i.naturalWidth>0;
+
+const PHOTO_BOX={x:0,y:420,w:512,h:1173};        // the paper's opening
+const TEXT_X=48,TEXT_W=840,TOP_Y=1150,LOWEST=1488;   // headline: ink starts at x 48; boxes never go below 1488
+const RED="#cc2424";
+/* Walburn Bold → condensed Noto Serif Display, sized so its capitals are as tall as Walburn's (74 px at 100)
+   and squeezed to Walburn's width; Helvetica Black → Inter Black, same idea (measured against the PSDs) */
+const HEAD_PX=1.036,HEAD_SX=0.87,NAME_PX=66,NAME_SX=0.86,NAME_RIGHT=994,NAME_BASE=1725;
+
+const photoCv=document.createElement("canvas");photoCv.width=W;photoCv.height=H;const pctx=photoCv.getContext("2d");
+let grainPat=null;
+
+function headLines(size){
+  ctx.font=`700 ${size*HEAD_PX}px "Noto Serif Display",Georgia,serif`;
+  const lines=[];$("title").value.toUpperCase().split(/\n/).forEach(par=>{
+    const words=par.trim().split(/\s+/).filter(Boolean);let line="";
+    words.forEach(w=>{const t=line?line+" "+w:w;if(ctx.measureText(t).width*HEAD_SX>TEXT_W&&line){lines.push(line);line=w}else line=t});
+    if(line)lines.push(line);
+  });
+  return lines;
+}
+
+function draw(){
+  ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
+  ctx.fillStyle="#2a2523";ctx.fillRect(0,0,W,H);
+  if(ok(BASE))ctx.drawImage(BASE,0,0,W,H);
+
+  /* topic photo, clipped to the paper */
+  if(S.photo&&ok(MASK)){
+    const r=coverRect(S,S.photo.width,S.photo.height,PHOTO_BOX.w,PHOTO_BOX.h,+$("zoom").value/100);
+    pctx.globalCompositeOperation="source-over";pctx.clearRect(0,0,W,H);
+    pctx.drawImage(S.photo,PHOTO_BOX.x+r.x,PHOTO_BOX.y+r.y,r.w,r.h);
+    pctx.globalCompositeOperation="destination-in";pctx.drawImage(MASK,0,0,W,H);
+    ctx.drawImage(photoCv,0,0);
+  }else if(!S.photo){
+    ctx.fillStyle="rgba(60,50,40,.45)";ctx.font='500 34px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
+    ctx.fillText("Fotoja e temës",256,640);ctx.textAlign="left";
+  }
+  if(ok(TOP))ctx.drawImage(TOP,0,0,W,H);
+  const cut=CUT[S.who];if(cut&&ok(cut))ctx.drawImage(cut,0,0,W,H);
+
+  /* headline: one red box per line, 0.2×size left of the ink, 0.19×size right of it */
+  const size=+$("size").value,pitch=size*1.2,boxH=size*0.98;
+  const lines=headLines(size);
+  const top=Math.min(TOP_Y,LOWEST-(lines.length-1)*pitch-boxH)+(+$("lift").value);
+  ctx.textBaseline="alphabetic";
+  lines.forEach((l,i)=>{
+    const m=ctx.measureText(l),y=top+i*pitch;
+    const inkR=TEXT_X+(m.actualBoundingBoxRight)*HEAD_SX;
+    ctx.fillStyle=RED;ctx.fillRect(Math.round(TEXT_X-size*0.2),Math.round(y),Math.round(inkR+size*0.19-(TEXT_X-size*0.2)),Math.round(boxH));
+  });
+  ctx.fillStyle="#fff";
+  lines.forEach((l,i)=>{
+    const y=top+i*pitch+size*0.85,m=ctx.measureText(l);
+    ctx.save();ctx.translate(TEXT_X,y);ctx.scale(HEAD_SX,1);ctx.fillText(l,m.actualBoundingBoxLeft,0);ctx.restore();
+  });
+
+  /* presenter name, right-aligned under the cut-out */
+  const name=$("name").value.trim().toUpperCase();
+  if(name){
+    ctx.font=`900 ${NAME_PX}px "Inter Black","Inter",Helvetica,Arial,sans-serif`;
+    const w=ctx.measureText(name).width*NAME_SX;
+    ctx.save();ctx.translate(NAME_RIGHT-w,NAME_BASE);ctx.scale(NAME_SX,1);ctx.fillStyle="#fff";ctx.fillText(name,0,0);ctx.restore();
+  }
+
+  /* film grain */
+  if(ok(GRAIN)){
+    grainPat=grainPat||ctx.createPattern(GRAIN,"repeat");
+    ctx.globalCompositeOperation="overlay";ctx.globalAlpha=89/255;ctx.fillStyle=grainPat;ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
+  }
+}
+
+function paintPeople(){[...$("people").children].forEach(b=>{const on=b.dataset.k===S.who;b.setAttribute("aria-pressed",on);
+  b.style.background=on?RED:"";b.style.borderColor=on?RED:"";b.style.color=on?"#fff":""})}
+function sync(){
+  $("zoomOut").textContent=$("zoom").value+"%";
+  $("sizeOut").textContent=$("size").value;
+  $("liftOut").textContent=$("lift").value;
+  paintPeople();draw();
+  store("ap-thumb-draft",JSON.stringify({who:S.who,name:$("name").value,title:$("title").value,size:$("size").value,lift:$("lift").value}));
+}
+
+function setPhoto(file){
+  if(!file||!file.type.startsWith("image/"))return;
+  const i=new Image();
+  i.onload=()=>{S.photo=i;S.ox=0;S.oy=0;$("zoom").value=100;$("result").hidden=true;$("frame").classList.add("has-photo");sync()};
+  i.src=URL.createObjectURL(file);
+}
+$("drop").onclick=()=>$("file").click();
+$("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
+$("file").onchange=e=>{setPhoto(e.target.files[0]);e.target.value=""};
+["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop")setPhoto(e.dataTransfer.files[0])}));
+document.addEventListener("paste",e=>{const f=[...(e.clipboardData?.files||[])][0];if(f)setPhoto(f)});
+setupFraming(cv,S,W,$("zoom"),()=>!!S.photo,draw);
+
+$("form").addEventListener("input",sync);
+$("form").addEventListener("change",sync);
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  $("status").textContent="Duke përgatitur…";
+  const blob=await new Promise(r=>cv.toBlob(r,"image/png"));
+  await saveFile(blob,"png","albanianpost-thumbnail-"+slugOf($("title").value));
+});
+
+(function init(){
+  Object.entries(PEOPLE).forEach(([k,p])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=p.label;b.dataset.k=k;
+    b.onclick=()=>{S.who=k;$("name").value=p.name;sync()};$("people").appendChild(b)});
+  $("name").value=PEOPLE[S.who].name;
+  try{const d=JSON.parse(load("ap-thumb-draft")||"null");if(d){if(PEOPLE[d.who])S.who=d.who;$("name").value=d.name??PEOPLE[S.who].name;
+    $("title").value=d.title??"";$("size").value=d.size??100;$("lift").value=d.lift??0}}catch(e){}
+  sync();
+  Promise.all([
+    document.fonts.load(`700 ${100*HEAD_PX}px "Noto Serif Display"`,"ËÇ"),
+    document.fonts.load('900 64px "Inter Black"',"ËÇ"),
+    document.fonts.load('500 34px "IBM Plex Sans"',"F")
+  ]).catch(()=>{}).then(draw);
+  document.fonts.ready.then(draw);
+  scriptsRunning();
+})();
+</script>
