@@ -143,9 +143,9 @@ function createTimeline(o){
   /* the picture to draw now; during a switch the previous element still holds its last frame */
   function frame(){
     if(!cur)return null;
-    if(cur.m.kind==="image")return {src:cur.m.img,w:cur.m.w,h:cur.m.h};
+    if(cur.m.kind==="image")return {src:cur.m.img,w:cur.m.w,h:cur.m.h,mid:cur.m.id,t:0};
     const v=cur.v.readyState>=2?cur.v:(prev&&prev.readyState>=2?prev:null);
-    return v?{src:v,w:v.videoWidth,h:v.videoHeight}:null;
+    return v?{src:v,w:v.videoWidth,h:v.videoHeight,mid:v._m,t:v.currentTime}:null;   // mid + t: which media and where in it (Auto re-frame)
   }
 
   /* ---------- playback ---------- */
@@ -495,6 +495,7 @@ function createTimeline(o){
   return {
     get time(){return time},total,frame,show,play,stop,unlock,audio,addFiles,render,fit,
     hasClips:()=>clips.length>0,isPlaying:()=>playing,
+    used:()=>clips.map(c=>({m:media.get(c.m),in:c.in,out:c.out})),
     get selectedLayer(){return lsel},selectLayer:id=>{selectLayer(id)},
   };
 }
