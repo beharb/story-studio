@@ -125,8 +125,8 @@ input:focus-visible,textarea:focus-visible,button:focus-visible,.drop:focus-visi
     <div class="group">
       <span class="lab">Opsione</span>
       <label class="toggle"><input type="checkbox" id="cta" checked> Lë vend për link-sticker të Instagramit</label>
-      <label class="toggle"><input type="checkbox" id="dateOn" checked> Shfaq datën lart djathtas</label>
-      <input type="text" id="date" maxlength="40" aria-label="Data">
+      <label class="toggle"><input type="checkbox" id="dateOn"> Shfaq datën lart djathtas</label>
+      <input type="text" id="date" maxlength="40" aria-label="Data" hidden>
     </div>
 
     <div class="group">
@@ -491,6 +491,13 @@ async function saveFile(blob,ext){
 (function init(){
   try{const d=JSON.parse(load("aps-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;$("tag").value=d.tag??"KOSOVË";$("title").value=d.title??"";$("sub").value=d.sub??"";$("size").value=d.size??112;$("shade").value=d.shade??85;$("cta").checked=d.cta!==false}}catch(e){}
   store("aps-logo",null);$("date").value=today();renderSubs();sync();
+  /* the date is off until asked for; it is today's date, kept current (reopening the app, midnight) unless typed over */
+  let dateAuto=true;
+  $("dateOn").addEventListener("change",()=>{$("date").hidden=!$("dateOn").checked;refreshDate()});
+  $("date").addEventListener("input",()=>{const v=$("date").value.trim();dateAuto=!v||v.toUpperCase()===today().toUpperCase();if(!v)$("date").value=today()});
+  function refreshDate(){if(dateAuto&&$("date").value!==today()){$("date").value=today();if(!busy)draw()}}
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshDate()});
+  addEventListener("focus",refreshDate);setInterval(refreshDate,60000);
   $("inapp").hidden=!INAPP;
   Promise.all([
     document.fonts.load('700 100px "Noto Serif Display"',"ËÇë"),
