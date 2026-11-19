@@ -559,5 +559,7 @@ function createTimeline(o){
     hasClips:()=>clips.length>0,isPlaying:()=>playing,
     used:()=>clips.map(c=>({m:media.get(c.m),in:c.in,out:c.out})),
     get selectedLayer(){return lsel},selectLayer:id=>{selectLayer(id)},
+    /* a change the page makes to its graphics layers, as one undo step */
+    change:fn=>{if(locked)return;const before=snap();fn();commit(before)},
   };
 }

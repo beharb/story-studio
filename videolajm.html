@@ -28,6 +28,11 @@
 .rf-btn svg{width:18px;height:18px;flex:none}
 .rf-btn[aria-pressed=true]{background:var(--red);border-color:var(--red);color:var(--red-ink)}
 .rf progress{height:6px}
+.nc-del{flex:none;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);cursor:pointer;padding:0;font-size:18px;line-height:1}
+.nc-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border-style:dashed}
+.nc-free-row{display:flex;align-items:center;gap:10px}
+.nc-free-row .toggle{flex:1;font-size:13px}
+#ncList{display:flex;flex-direction:column;gap:18px}
 .vol-btn{flex:none;width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--fg);cursor:pointer;padding:0}
 .vol-btn svg{width:18px;height:18px}
 .vol-btn[aria-pressed=true]{background:var(--red);border-color:var(--red);color:var(--red-ink)}
@@ -91,12 +96,8 @@
       <div class="row"><span class="small" style="flex:1">Ngjyra e katrorëve</span><input type="color" id="color" value="#cc2424" aria-label="Ngjyra e katrorëve"></div>
     </div>
 
-    <div class="group" id="ncGroup">
-      <div class="nc-head"><span class="lab">Emri</span><label class="toggle"><input type="checkbox" id="ncOn"> Shfaqe</label></div>
-      <input type="text" id="ncName" value="Albin Kurti" maxlength="40" aria-label="Emri" placeholder="Emri Mbiemri">
-      <input type="text" id="ncRole" value="KRYEMINISTER I KOSOVËS" maxlength="48" aria-label="Funksioni" placeholder="FUNKSIONI">
-      <div class="row"><span class="small" id="ncWhen" style="flex:1">Del pasi të largohet titulli.</span><button type="button" class="chip" id="ncHere">Vendose te koka</button></div>
-    </div>
+    <div id="ncList"></div>
+    <button type="button" class="btn nc-add" id="ncAdd">+ Shto një emër tjetër</button>
 
     <div class="group" id="titleGroup">
       <label for="title">Titulli (citati)</label>
@@ -154,7 +155,11 @@ const LENS=[["end","Në fund"],[8,"Pas 8 s"],[15,"Pas 15 s"]];
 /* “LAJMET VIDEO – Name Card” (its own mogrt): the role in a box that wipes open from the left, the name under it rising
    word by word out of a matte; at the end the role fades, the box closes to the left and the words drop away one by one.
    Positions and timing are the template's (its After Effects project and preview); the box is the role + 20 px a side. */
-const NC={on:false,start:3,len:6.6,name:"",role:""};
+/* any number of name cards; each has its own track, timing and fields. free: placed by hand, dx/dy from the template's place */
+const NCS=[];let ncSeq=0;
+const ncNew=(o={})=>({id:++ncSeq,on:false,start:3,len:6.6,name:"",role:"",free:false,dx:0,dy:0,...o});
+const ncOn=()=>NCS.filter(c=>c.on);
+const ncLayer=c=>"name"+c.id,ncOf=id=>NCS.find(c=>ncLayer(c)===id);
 const NC_X=108.47,NC_BOX_Y=1206.9,NC_BOX_H=66,NC_BOX_MIN=184.49,NC_ROLE_BASE=1253,NC_ROLE_SX=0.985;
 const NC_NAME_BASE=1360,NC_NAME_SX=0.935,NC_CLIP_Y=1288.6,NC_CLIP_B=1709,NC_RISE=425,NC_MIN=3.2,NC_LEN=6.6;
 /* the title and the name share the lower third: the title builds in, leaves, and only then the name comes in */
@@ -164,9 +169,9 @@ const seg=(t,a,b)=>clamp((t-a)/(b-a));
 const ease=v=>1-Math.pow(1-clamp(v),3);
 
 /* how long the finished video is (the timeline's length), and when the graphics have finished leaving */
-const emptyLength=()=>Math.max(S.len==="end"?10:S.len+1,NC.on?NC.start+NC.len+0.2:0);
+const emptyLength=()=>Math.max(S.len==="end"?10:S.len+1,...ncOn().map(c=>c.start+c.len+0.2));
 function total(){return TL.hasClips()?TL.total():emptyLength()}
-function gEnd(){const T=total(),e=S.len==="end"?T-0.15:Math.min(S.len,T-0.15);return NC.on?Math.min(e,NC.start-0.05):e}
+function gEnd(){const T=total(),e=S.len==="end"?T-0.15:Math.min(S.len,T-0.15),on=ncOn();return on.length?Math.min(e,Math.min(...on.map(c=>c.start))-0.05):e}
 
 /* animation state at time t (null = everything in place, for editing) */
 function state(t){
@@ -194,10 +199,20 @@ function ncState(u,L){
       const j=n-1-i,s=n>1?0.32/(n-1):0,f=seg(u,L-0.45+j*s,L-0.33+j*s);return NC_RISE*(1-ease(p))+NC_RISE*f*f},
   };
 }
-function drawNameCard(t){
-  const u=t-NC.start,L=NC.len;if(!NC.on||u<0||u>L)return;
+function drawNameCard(c,t){
+  c.box=null;
+  const u=t-c.start,L=c.len;if(!c.on||u<0||u>L)return;
   const k=ncState(u,L),col=$("color").value,ink=CATS[S.cat].ink;
-  const role=NC.role.trim().toUpperCase(),name=NC.name.trim();
+  const role=c.role.trim().toUpperCase(),name=c.name.trim();
+  if(!role&&!name)return;
+  const dx=c.free?c.dx:0,dy=c.free?c.dy:0;
+  /* its extent at full size (for dragging and keeping it inside the frame) */
+  let bw0=0,nw0=0;
+  if(role){ctx.font='700 42px "Noto Serif Display",Georgia,serif';const w=ctx.measureText(role).width*Math.min(NC_ROLE_SX,(W-NC_X-120)/Math.max(1,ctx.measureText(role).width));bw0=Math.max(NC_BOX_MIN,w+40)}
+  if(name){ctx.font='900 84px "Noto Serif Display",Georgia,serif';const w=ctx.measureText(name).width;nw0=w*Math.min(NC_NAME_SX,(W-NC_X-80)/Math.max(1,w))}
+  const b={x0:NC_X,x1:NC_X+Math.max(bw0,nw0),y0:role?NC_BOX_Y:NC_NAME_BASE-70,y1:name?NC_NAME_BASE+24:NC_BOX_Y+NC_BOX_H};
+  c.box={x0:b.x0+dx,x1:b.x1+dx,y0:b.y0+dy,y1:b.y1+dy,base:b};
+  ctx.save();ctx.translate(dx,dy);
   if(role&&k.box>0){
     ctx.font='700 42px "Noto Serif Display",Georgia,serif';
     const rs=Math.min(NC_ROLE_SX,(W-NC_X-120)/Math.max(1,ctx.measureText(role).width)),rw=ctx.measureText(role).width*rs;
@@ -215,6 +230,12 @@ function drawNameCard(t){
     words.forEach((wd,i)=>{const dy=k.word(i,words.length);if(dy<NC_RISE)ctx.fillText(wd,x,dy);x+=ctx.measureText(wd).width+sp});
     ctx.restore();
   }
+  ctx.restore();
+}
+/* a card placed by hand stays inside the frame */
+function ncClamp(c){
+  const b=c.box?.base;if(!b)return;
+  c.dx=Math.max(-b.x0+24,Math.min(W-24-b.x1,c.dx));c.dy=Math.max(-b.y0+24,Math.min(H-24-b.y1,c.dy));
 }
 
 /* ---------- Keyframes for the picture's position (S.ox/S.oy) and zoom, on the sequence's clock.
@@ -370,7 +391,7 @@ function draw(t=null){
     });
   });
   ctx.restore();ctx.globalAlpha=1;
-  drawNameCard(t??0);
+  NCS.forEach(c=>drawNameCard(c,t??0));
   kfTick();
 }
 
@@ -380,43 +401,105 @@ const TL=createTimeline({
   draw:t=>draw(t),
   emptyLength,
   keys:()=>KF.map(k=>k.t),
-  /* graphics layers, top track first; the name card can be moved, stretched and hidden */
+  /* graphics layers, top track first (the last name on top); each name card can be moved, stretched and hidden */
   layers:()=>[
-    {id:"name",kind:"name",label:"Emri",offLabel:"Shto emrin",sub:NC.name.trim(),start:NC.start,end:NC.start+NC.len,on:NC.on,
-      move:true,resize:true,toggle:true,minLen:NC_MIN,minStart:TITLE_MIN,shade:[1,1.95]},
+    ...NCS.map((c,i)=>({id:ncLayer(c),kind:"name",label:ncLabel(i),offLabel:"Shto "+ncLabel(i).toLowerCase(),sub:c.name.trim(),start:c.start,end:c.start+c.len,on:c.on,
+      move:true,resize:true,toggle:true,minLen:NC_MIN,minStart:TITLE_MIN,shade:[1,1.95]})).reverse(),
     {id:"title",kind:"title",label:"Titulli",sub:"LAJMET VIDEO",start:0,end:gEnd(),on:true,shade:[2.5,2.1]},
   ],
-  onLayer:(id,v)=>{if(id==="name"){NC.start=v.start;NC.len=v.len;ncInfo();if(!busy)draw(TL.time)}},
-  onLayerToggle:(id,on)=>{if(id==="name")setNameOn(on,true)},
+  onLayer:(id,v)=>{const c=ncOf(id);if(c){c.start=v.start;c.len=v.len;ncInfo();if(!busy)draw(TL.time)}},
+  onLayerToggle:(id,on)=>{const c=ncOf(id);if(c)setNameOn(c,on,true)},
   onLayerSelect:id=>layerPicked(id),
-  layerState:()=>({on:NC.on,start:NC.start,len:NC.len}),
-  setLayerState:d=>{Object.assign(NC,d);$("ncOn").checked=NC.on;ncInfo()},
+  /* undo/redo: the cards and their timing and place; what is typed in them stays as it is now */
+  layerState:()=>({ncs:NCS.map(c=>({...c,box:null}))}),
+  setLayerState:d=>{if(!d.ncs)return;const now=new Map(NCS.map(c=>[c.id,c]));
+    NCS.length=0;d.ncs.forEach(o=>{const c=now.get(o.id);NCS.push({...o,name:c?c.name:o.name,role:c?c.role:o.role})});ncPanel()},
   onChange:()=>{sync();rfKick()},
   onFirstMedia:()=>resetFrame(),
   onPlayToggle:()=>{if(busy)stopReq=true;else preview()},
   status:msg=>{$("mediaInfo").textContent=msg||(TL.hasClips()?`Kohëzgjatja ${fmt(TL.total())}`:"")},
 });
 /* the name card goes on at the playhead (Premiere drops a graphic there), but not before the title has had its time */
-function setNameOn(on,fromTimeline){
-  if(on&&!NC.on){NC.len=NC.len||NC_LEN;NC.start=Math.max(TITLE_MIN,Math.min(Math.max(TL.time,NC_FIRST),total()-NC.len))}
-  NC.on=on;$("ncOn").checked=on;ncInfo();
+function setNameOn(c,on,fromTimeline){
+  if(on&&!c.on){c.len=c.len||NC_LEN;c.start=Math.max(TITLE_MIN,Math.min(Math.max(TL.time,NC_FIRST),total()-c.len))}
+  c.on=on;const g=ncGroup(c);if(g)g.querySelector(".nc-on").checked=on;ncInfo();
   if(!fromTimeline){TL.render();if(!busy)draw(TL.time)}
 }
+const ncLabel=i=>NCS.length>1?"Emri "+(i+1):"Emri";
+const ncGroup=c=>document.querySelector(`#ncList [data-nc="${c.id}"]`);
+const escA=s=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+/* the panel: one group per name card */
+function ncPanel(){
+  $("ncList").innerHTML=NCS.map((c,i)=>`
+    <div class="group" data-nc="${c.id}">
+      <div class="nc-head"><span class="lab">${ncLabel(i)}</span><label class="toggle"><input type="checkbox" class="nc-on"${c.on?" checked":""}> Shfaqe</label>${NCS.length>1?`<button type="button" class="nc-del" title="Hiqe këtë emër" aria-label="Hiqe ${ncLabel(i).toLowerCase()}">×</button>`:""}</div>
+      <input type="text" class="nc-name" value="${escA(c.name)}" maxlength="40" aria-label="Emri" placeholder="Emri Mbiemri">
+      <input type="text" class="nc-role" value="${escA(c.role)}" maxlength="48" aria-label="Funksioni" placeholder="FUNKSIONI">
+      <div class="nc-free-row"><label class="toggle"><input type="checkbox" class="nc-free"${c.free?" checked":""}> Pozicion i lirë</label>${c.free?`<button type="button" class="chip nc-reset">Ktheje në vend</button>`:""}</div>
+      <div class="row"><span class="small nc-when" style="flex:1"></span><button type="button" class="chip nc-here">Vendose te koka</button></div>
+    </div>`).join("");
+  ncInfo();TL.render();if(!busy)draw(TL.time);
+}
+/* show the card at the playhead if it is not on screen there (so it can be dragged) */
+function ncReveal(c){if(TL.time<c.start+1.2||TL.time>c.start+c.len-2)TL.show(c.start+Math.min(1.5,c.len/2))}
+function addName(){
+  if(busy)return;
+  TL.change(()=>{
+    const on=ncOn(),start=on.length?Math.max(...on.map(c=>c.start+c.len)):Math.max(TL.time,NC_FIRST);
+    NCS.push(ncNew({on:true,start:Math.max(TITLE_MIN,start),len:NC_LEN}));
+  });
+  ncPanel();const c=NCS[NCS.length-1];TL.selectLayer(ncLayer(c));ncReveal(c);
+  ncGroup(c).querySelector(".nc-name").focus();
+}
+$("ncAdd").onclick=addName;
+$("ncList").addEventListener("click",e=>{
+  const g=e.target.closest("[data-nc]");if(!g||busy)return;const c=NCS.find(x=>x.id===+g.dataset.nc);if(!c)return;
+  if(e.target.closest(".nc-del")){TL.change(()=>NCS.splice(NCS.indexOf(c),1));ncPanel()}
+  else if(e.target.closest(".nc-here")){if(!c.on)setNameOn(c,true);else{c.start=Math.max(TITLE_MIN,TL.time);ncInfo();TL.render();draw(TL.time)}TL.selectLayer(ncLayer(c))}
+  else if(e.target.closest(".nc-reset")){TL.change(()=>{c.dx=0;c.dy=0});draw(TL.time)}
+});
+$("ncList").addEventListener("change",e=>{
+  const g=e.target.closest("[data-nc]");if(!g||busy)return;const c=NCS.find(x=>x.id===+g.dataset.nc);if(!c)return;
+  if(e.target.classList.contains("nc-on"))setNameOn(c,e.target.checked);
+  else if(e.target.classList.contains("nc-free")){
+    const on=e.target.checked;TL.change(()=>{c.free=on;if(on&&!c.on)setNameOn(c,true,true)});ncPanel();
+    if(on){ncReveal(c);TL.selectLayer(ncLayer(c));$("hint").textContent=NC_FREE_HINT}
+  }
+});
+
+/* ---------- dragging a name card placed by hand (“Pozicion i lirë”); everywhere else the drag moves the video ---------- */
+const NC_FREE_HINT="Tërhiqe emrin në video për ta vendosur ku të duash.";
+const cvPt=e=>{const r=cv.getBoundingClientRect(),k=W/r.width;return {x:(e.clientX-r.left)*k,y:(e.clientY-r.top)*k,k}};
+const ncHit=p=>[...NCS].reverse().find(c=>c.free&&c.box&&p.x>=c.box.x0-20&&p.x<=c.box.x1+20&&p.y>=c.box.y0-20&&p.y<=c.box.y1+20);
+cv.addEventListener("pointerdown",e=>{
+  if(busy)return;const p=cvPt(e),c=ncHit(p);if(!c)return;
+  e.stopImmediatePropagation();e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  const d0={dx:c.dx,dy:c.dy};let moved=false;cv.classList.add("drag");
+  const mv=ev=>{if(ev.pointerId!==e.pointerId)return;const q=cvPt(ev);moved=true;c.dx=d0.dx+q.x-p.x;c.dy=d0.dy+q.y-p.y;ncClamp(c);draw(TL.time)};
+  const up=ev=>{if(ev.pointerId!==e.pointerId)return;cv.removeEventListener("pointermove",mv);cv.removeEventListener("pointerup",up);cv.removeEventListener("pointercancel",up);cv.classList.remove("drag");
+    if(moved){const d1={dx:c.dx,dy:c.dy};c.dx=d0.dx;c.dy=d0.dy;TL.change(()=>Object.assign(c,d1));draw(TL.time)}};
+  cv.addEventListener("pointermove",mv);cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+});
+cv.addEventListener("pointermove",e=>{if(!e.buttons)cv.style.cursor=ncHit(cvPt(e))?"move":""});
 const HINT=$("hint").textContent;
 function layerPicked(id){
-  $("hint").textContent=id==="name"?"Emri: tërhiqe për ta lëvizur, skaji i djathtë e zgjat. Emrin dhe funksionin i ndryshon te “Emri”.":
+  const c=id&&ncOf(id);
+  $("hint").textContent=c?(c.free?NC_FREE_HINT+" Në kohë: tërhiqe shiritin, skaji i djathtë e zgjat.":"Emri: tërhiqe për ta lëvizur, skaji i djathtë e zgjat. Emrin dhe funksionin i ndryshon në panel."):
     id==="title"?"Titulli: teksti, rubrika dhe data ndryshohen në panel.":S.auto?RF_HINT:HINT;
-  const g=id==="name"?$("ncGroup"):id==="title"?$("titleGroup"):null;if(!g)return;
+  const g=c?ncGroup(c):id==="title"?$("titleGroup"):null;if(!g)return;
   g.classList.remove("flash");void g.offsetWidth;g.classList.add("flash");
   /* two columns: bring the fields into view; on a phone the panel is far below, so stay at the timeline */
   if(matchMedia("(min-width:821px)").matches){const r=g.getBoundingClientRect();if(r.top<0||r.bottom>innerHeight)g.scrollIntoView({behavior:"smooth",block:"center"})}
 }
 function ncInfo(){
-  const el=$("ncWhen");
-  if(!NC.on){el.textContent="Del pasi të largohet titulli.";el.classList.remove("nc-warn");return}
-  el.textContent=`Titulli del deri ${fmt(gEnd())}, pastaj emri ${fmt(NC.start)}–${fmt(NC.start+NC.len)}.`;
-  el.classList.toggle("nc-warn",NC.start+NC.len>total()+0.05);
-  if(NC.start+NC.len>total()+0.05)el.textContent+=" Videoja mbaron para se të dalë emri i tëri.";
+  const first=ncOn().sort((a,b)=>a.start-b.start)[0];
+  NCS.forEach(c=>{
+    const g=ncGroup(c);if(!g)return;const el=g.querySelector(".nc-when");
+    if(!c.on){el.textContent="Del pasi të largohet titulli.";el.classList.remove("nc-warn");return}
+    el.textContent=c===first?`Titulli del deri ${fmt(gEnd())}, pastaj emri ${fmt(c.start)}–${fmt(c.start+c.len)}.`:`Del ${fmt(c.start)}–${fmt(c.start+c.len)}.`;
+    const late=c.start+c.len>total()+0.05;el.classList.toggle("nc-warn",late);
+    if(late)el.textContent+=" Videoja mbaron para se të dalë emri i tëri.";
+  });
 }
 function resetFrame(){S.ox=0;S.oy=0;$("zoom").value=100;KF.length=0;kfInfo();$("frame").classList.add("has-photo")}
 const fmt=s=>{s=Math.max(0,Math.round(s||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
@@ -517,7 +600,7 @@ $("form").addEventListener("submit",async e=>{
 
 /* ---------- controls ---------- */
 function sync(){
-  NC.name=$("ncName").value;NC.role=$("ncRole").value;
+  NCS.forEach(c=>{const g=ncGroup(c);if(g){c.name=g.querySelector(".nc-name").value;c.role=g.querySelector(".nc-role").value}});
   $("zoomOut").textContent=$("zoom").value+"%";
   $("sizeOut").textContent=$("size").value;
   if(S.color)$("color").value=S.color;
@@ -527,11 +610,9 @@ function sync(){
   TL.render();ncInfo();
   if(!busy)draw(TL.time);
   store("ap-video-draft",JSON.stringify({cat:S.cat,color:$("color").value,tag:$("tag").value,title:$("title").value,size:$("size").value,place:$("place").value,len:S.len,
-    ncName:$("ncName").value,ncRole:$("ncRole").value}));
+    ncs:NCS.map(c=>({name:c.name,role:c.role,free:c.free,dx:c.dx,dy:c.dy}))}));
 }
 $("color").addEventListener("input",()=>{S.color=$("color").value});
-$("ncOn").addEventListener("change",()=>{if(!busy)setNameOn($("ncOn").checked)});
-$("ncHere").onclick=()=>{if(busy)return;if(!NC.on)setNameOn(true);else{NC.start=Math.max(TITLE_MIN,TL.time);ncInfo();TL.render();draw(TL.time)}TL.selectLayer("name")};
 $("rfBtn").onclick=()=>{if(!busy)setAuto(!S.auto)};
 RF_MOTIONS.forEach(([v,label])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label;b.dataset.m=v;
   b.title="Sa shpejt e ndjek kamera personin";
@@ -547,7 +628,11 @@ $("form").addEventListener("change",sync);
   $("date").value=`${MONTHS[d0.getMonth()]} ${d0.getFullYear()}`;
   try{const d=JSON.parse(load("ap-video-draft")||"null");if(d){if(CATS[d.cat])S.cat=d.cat;S.color=d.color||null;$("tag").value=d.tag??"KOSOVË";
     $("title").value=d.title??"";$("size").value=d.size??77;$("place").value=d.place??"PRISHTINË";
-    if(d.ncName!=null)$("ncName").value=d.ncName;if(d.ncRole!=null)$("ncRole").value=d.ncRole;if(d.len==="end"||d.len===8||d.len===15)S.len=d.len}}catch(e){}
+    if(Array.isArray(d.ncs)&&d.ncs.length)d.ncs.slice(0,12).forEach(o=>NCS.push(ncNew({name:String(o.name??""),role:String(o.role??""),free:!!o.free,dx:+o.dx||0,dy:+o.dy||0})));
+    else if(d.ncName!=null||d.ncRole!=null)NCS.push(ncNew({name:d.ncName??"",role:d.ncRole??""}));
+    if(d.len==="end"||d.len===8||d.len===15)S.len=d.len}}catch(e){}
+  if(!NCS.length)NCS.push(ncNew({name:"Albin Kurti",role:"KRYEMINISTER I KOSOVËS"}));
+  ncPanel();
   try{const r=JSON.parse(load("ap-video-rf")||"null");if(r){if(RF_MOTION[r.motion]){S.motion=r.motion;RF.setMotion(r.motion)}S.auto=!!r.on}}catch(e){}
   rfInfo();if(S.auto)$("hint").textContent=RF_HINT;
   {const v=parseInt(load("ap-video-vol"),10);if(v>=0&&v<=200){$("vol").value=v;if(v>0)volBack=v}}
