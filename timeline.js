@@ -193,14 +193,22 @@ function createTimeline(o){
   function stop(){stopFlag=true}
   /* iOS: a video may play with sound only if play() was first called inside a tap; touch both players now */
   function unlock(){els.forEach(v=>{v.muted=false;try{const p=v.play();if(p)p.then(()=>{if(!playing)v.pause()}).catch(()=>{})}catch(e){}})}
-  let actx=null,dest=null;
+  /* the clips' sound goes through one gain node, so the volume is heard in the preview and recorded into the video */
+  let actx=null,dest=null,gain=null,vol=1;
   function audio(){
     if(actx)return {actx,dest};
     try{
       actx=new (window.AudioContext||window.webkitAudioContext)();dest=actx.createMediaStreamDestination();
-      els.forEach(v=>{const s=actx.createMediaElementSource(v);s.connect(dest);s.connect(actx.destination)});
-    }catch(e){dest=null}
+      gain=actx.createGain();gain.gain.value=vol;gain.connect(dest);gain.connect(actx.destination);
+      els.forEach(v=>actx.createMediaElementSource(v).connect(gain));
+    }catch(e){dest=null;gain=null}
     return {actx,dest};
+  }
+  function setVolume(v){
+    vol=Math.max(0,Math.min(2,+v||0));
+    if(gain)gain.gain.setTargetAtTime?gain.gain.setTargetAtTime(vol,actx.currentTime,0.015):(gain.gain.value=vol);
+    else els.forEach(e=>{try{e.volume=Math.min(1,vol)}catch(_){}});
+    render();
   }
 
   /* ---------- UI ---------- */
@@ -299,6 +307,9 @@ function createTimeline(o){
       if(m.kind==="video"){const cw=Math.min(Math.ceil(w),4000),cn=document.createElement("canvas");cn.width=cw;cn.height=30;a.appendChild(cn);drawWave(cn,m,c,wave)}
       ra1.appendChild(a);
     });
+    /* keyframes (the picture's position and zoom) as diamonds along V1; tap one to jump to it */
+    (o.keys?o.keys():[]).forEach(t=>{const k=document.createElement("i");k.className="tl-kf"+(Math.abs(t-time)<0.5/FPS?" on":"");
+      k.dataset.t=t;k.style.left=xOf(t)+"px";k.title="Keyframe "+tc(t);rv1.appendChild(k)});
     drawRuler();placeHead();paintSel();
     btn("select").setAttribute("aria-pressed",tool==="select");btn("razor").setAttribute("aria-pressed",tool==="razor");
     sc.classList.toggle("razor",tool==="razor");
@@ -323,7 +334,7 @@ function createTimeline(o){
     for(let i=0;i<w;i++){
       let mx=0;const s=Math.floor(a0+i*k),e=Math.max(s+1,Math.floor(a0+(i+1)*k));
       for(let j=s;j<e&&j<p.length;j++)if(p[j]>mx)mx=p[j];
-      const v=Math.sqrt(mx/m.peakTop)*(h/2-2);x.fillRect(i,h/2-v,1,v*2||1);
+      const v=Math.min(h/2-1,Math.sqrt(mx/m.peakTop*vol)*(h/2-2));x.fillRect(i,h/2-v,1,v*2||1);
     }
   }
   function drawRuler(){
@@ -391,6 +402,7 @@ function createTimeline(o){
      and a selected item can then be dragged or trimmed. Tapping empty track space moves the playhead. */
   inner.addEventListener("pointerdown",e=>{
     if(locked||e.target===ruler||e.target.closest(".tl-ph"))return;
+    const kd=e.target.closest(".tl-kf");if(kd){e.preventDefault();show(+kd.dataset.t);render();return}
     const r=sc.getBoundingClientRect(),pxOf=ev=>ev.clientX-r.left+sc.scrollLeft,px=pxOf(e),touch=e.pointerType!=="mouse";
     const lay=e.target.closest(".tl-l"),el=e.target.closest(".tl-c,.tl-a");
     const trim=e.target.classList.contains("tl-tr")?(e.target.classList.contains("l")?"l":"r"):null;
@@ -493,7 +505,7 @@ function createTimeline(o){
   });
 
   return {
-    get time(){return time},total,frame,show,play,stop,unlock,audio,addFiles,render,fit,
+    get time(){return time},total,frame,show,play,stop,unlock,audio,setVolume,addFiles,render,fit,
     hasClips:()=>clips.length>0,isPlaying:()=>playing,
     used:()=>clips.map(c=>({m:media.get(c.m),in:c.in,out:c.out})),
     get selectedLayer(){return lsel},selectLayer:id=>{selectLayer(id)},
