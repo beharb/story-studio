@@ -100,3 +100,13 @@
 }
 /* the two hidden players; iOS only decodes a video it treats as visible, so they stay on screen, nearly transparent */
 .tl-dec{position:fixed;left:0;bottom:0;width:64px;height:36px;opacity:.01;pointer-events:none;z-index:-1}
+/* the selected clips' strip: speed chips and the sound button */
+.tl-clip{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--field)}
+.tl-clip[hidden]{display:none}
+.tl-cl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tl-speeds{display:inline-flex;flex-wrap:wrap;gap:4px;margin-right:auto}
+.tl-s{min-width:0;padding:0 8px;font-variant-numeric:tabular-nums}
+.tl-c span .tl-sp{font-weight:700;color:#ffd65a}
+.tl-nos{position:absolute;inset:0;display:flex;align-items:center;gap:5px;padding:0 8px;font-size:10px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden}
+.tl-nos svg{width:13px;height:13px;flex:none}
+@media (max-width:560px){.tl-clip{padding:8px}.tl-speeds{margin-right:0}}

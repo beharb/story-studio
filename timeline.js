@@ -3,12 +3,15 @@
    of uploaded videos or photos), A1 their sound.
    Clips sit end to end, so deleting one closes the gap. Tools: select (V), razor (C), cut at the playhead (⌘K),
    delete, insert at the playhead, drag to reorder, drag an edge to trim, undo/redo, zoom.
+   Each clip has a speed (c.speed, 1 = normal: its in/out stay in the source's seconds, its length on the timeline is
+   (out-in)/speed) and can have its sound removed (c.mute) while its picture stays.
    Playback uses two <video> elements in turn (A/B roll): while one plays, the other is already parked on the next
    clip's first frame, so cuts are instant in the recording. */
 function createTimeline(o){
   const FPS=30,MIN=1/FPS*3,IMG_DUR=5,IMG_MAX=600,PAD=12;
   const media=new Map();let mid=0,cid=0;
-  let clips=[],sel=new Set(),time=0,pps=40,tool="select",playing=false,locked=false,stopFlag=false;
+  let clips=[],sel=new Set(),asel=false,time=0,pps=40,tool="select",playing=false,locked=false,stopFlag=false;   // asel: picked on A1 (the sound only)
+  const SPEEDS=[0.25,0.5,0.75,1,1.5,2,4];
   const undo=[],redo=[];
   const mkVid=()=>{const v=document.createElement("video");v.setAttribute("playsinline","");v.playsInline=true;v.muted=true;v.preload="auto";
     v.className="tl-dec";document.body.appendChild(v);v._m=null;return v};
@@ -16,7 +19,8 @@ function createTimeline(o){
   let cur=null,prev=null;                     // what is on screen: {c,m,v?}; prev = last video element, held during a switch
 
   /* ---------- sequence ---------- */
-  const len=c=>c.out-c.in;
+  const sp=c=>c.speed||1;
+  const len=c=>(c.out-c.in)/sp(c);
   const total=()=>clips.reduce((s,c)=>s+len(c),0);
   const starts=()=>{let s=0;return clips.map(c=>{const a=s;s+=len(c);return a})};
   function at(t){
@@ -33,7 +37,7 @@ function createTimeline(o){
   function splitAt(t,quiet){
     const a=at(t);if(!a)return false;
     const c=clips[a.i];if(a.off<MIN||len(c)-a.off<MIN)return false;
-    const before=snap(),c2={...c,id:++cid,in:c.in+a.off};c.out=c.in+a.off;
+    const cut=c.in+a.off*sp(c),before=snap(),c2={...c,id:++cid,in:cut};c.out=cut;
     clips.splice(a.i+1,0,c2);
     if(!quiet)commit(before);
     return true;
@@ -114,7 +118,7 @@ function createTimeline(o){
   /* ---------- showing a frame ---------- */
   function park(v,c,off){
     return new Promise(res=>{
-      const m=media.get(c.m),target=Math.max(0,Math.min(m.dur-0.04,c.in+off));let done=false;
+      const m=media.get(c.m),target=Math.max(0,Math.min(m.dur-0.04,c.in+off*sp(c)));let done=false;
       const fin=()=>{if(!done){done=true;res()}};
       const go=()=>{
         if(Math.abs(v.currentTime-target)<0.02&&v.readyState>=2)return fin();
@@ -161,16 +165,18 @@ function createTimeline(o){
         return;
       }
       const st=starts();let a=at(from),i=a.i,v=els[0],nv=els[1];
-      const startVideo=async(c)=>{try{await v.play()}catch(e){v.muted=true;try{await v.play()}catch(e2){}}};
+      const startVideo=async(c)=>{
+        v.playbackRate=sp(c);v.preservesPitch=v.webkitPreservesPitch=true;clipSound(v,c);
+        try{await v.play()}catch(e){v.muted=true;try{await v.play()}catch(e2){}}};
       const parkNext=j=>{const c=clips[j];if(!c||media.get(c.m).kind!=="video")return Promise.resolve();return park(nv,c,0).then(()=>nv.pause())};
       let m=media.get(clips[i].m),w0=0;
-      if(m.kind==="video"){await park(v,clips[i],a.off);cur={c:clips[i],m,v};await startVideo()}
+      if(m.kind==="video"){await park(v,clips[i],a.off);cur={c:clips[i],m,v};await startVideo(clips[i])}
       else{cur={c:clips[i],m};w0=performance.now()-a.off*1000}
       let pre=parkNext(i+1);
       for(;;){
         await raf();
         const c=clips[i],L=len(c);
-        let local=m.kind==="video"?v.currentTime-c.in:(performance.now()-w0)/1000;
+        let local=m.kind==="video"?(v.currentTime-c.in)/sp(c):(performance.now()-w0)/1000;
         const ended=local>=L-0.5/FPS||(m.kind==="video"&&v.ended);
         local=Math.min(local,L);
         const t=st[i]+local;time=Math.min(t,to);placeHead(true);o.draw(time);onFrame&&onFrame(time);
@@ -182,12 +188,12 @@ function createTimeline(o){
         if(m.kind==="video"){
           await pre;prev=v;[v,nv]=[nv,v];cur={c:clips[i],m,v};
           if(Math.abs(v.currentTime-clips[i].in)>0.05){await park(v,clips[i],0)}
-          await startVideo();
+          await startVideo(clips[i]);
         }else{cur={c:clips[i],m};w0=performance.now()}
         pre=parkNext(i+1);
       }
     }finally{
-      els.forEach(e=>e.pause());playing=false;lockUI(false);placeHead();
+      els.forEach(e=>{e.pause();e.playbackRate=1});playing=false;lockUI(false);placeHead();
     }
   }
   function stop(){stopFlag=true}
@@ -200,10 +206,12 @@ function createTimeline(o){
     try{
       actx=new (window.AudioContext||window.webkitAudioContext)();dest=actx.createMediaStreamDestination();
       gain=actx.createGain();gain.gain.value=vol;gain.connect(dest);gain.connect(actx.destination);
-      els.forEach(v=>actx.createMediaElementSource(v).connect(gain));
+      els.forEach(v=>{const g=actx.createGain();actx.createMediaElementSource(v).connect(g);g.connect(gain);v._g=g});
     }catch(e){dest=null;gain=null}
     return {actx,dest};
   }
+  /* a clip whose sound was removed plays silent; its picture is untouched */
+  function clipSound(v,c){const on=!c.mute;if(v._g)v._g.gain.value=on?1:0;else if(!on)v.muted=true}
   function setVolume(v){
     vol=Math.max(0,Math.min(2,+v||0));
     if(gain)gain.gain.setTargetAtTime?gain.gain.setTargetAtTime(vol,actx.currentTime,0.015):(gain.gain.value=vol);
@@ -227,6 +235,8 @@ function createTimeline(o){
     zout:svg(`<circle cx="7" cy="7" r="4.6" ${st_}/><path d="M10.4 10.4L14 14M5 7h4" ${st_}/>`),
     zin:svg(`<circle cx="7" cy="7" r="4.6" ${st_}/><path d="M10.4 10.4L14 14M5 7h4M7 5v4" ${st_}/>`),
     eye:svg(`<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" ${st_}/><circle cx="8" cy="8" r="2" ${st_}/>`),
+    snd:svg(`<path d="M2.5 6h2.6L8.5 3v10L5.1 10H2.5z" fill="currentColor"/><path d="M11 5.5a3.2 3.2 0 010 5M12.8 3.6a6 6 0 010 8.8" ${st_}/>`),
+    sndOff:svg(`<path d="M2.5 6h2.6L8.5 3v10L5.1 10H2.5z" fill="currentColor"/><path d="M10.8 6l3.6 4M14.4 6l-3.6 4" ${st_}/>`),
     eyeOff:svg(`<path d="M2.5 2.5l11 11M6.4 4A6.6 6.6 0 0114.5 8a10 10 0 01-1.9 2.4M10.1 12A6.7 6.7 0 011.5 8a10.5 10.5 0 012.6-3" ${st_}/>`),
   };
   R.innerHTML=`
@@ -252,6 +262,11 @@ function createTimeline(o){
       <button type="button" class="tl-b" data-a="zin" title="Zmadho (+)" aria-label="Zmadho">${ic.zin}</button>
     </span>
   </div>
+  <div class="tl-clip" data-r="clip" hidden>
+    <span class="tl-cl">Shpejtësia</span>
+    <span class="tl-speeds" data-r="speeds">${SPEEDS.map(s=>`<button type="button" class="tl-b tl-s" data-s="${s}">${String(s).replace(/^0/,"")}×</button>`).join("")}</span>
+    <button type="button" class="tl-b tl-w" data-r="mute"></button>
+  </div>
   <div class="tl-body">
     <div class="tl-heads" data-r="heads"></div>
     <div class="tl-scroll" data-r="scroll">
@@ -268,6 +283,7 @@ function createTimeline(o){
   <div class="tl-empty" data-r="empty">Ngarko një video për ta prerë këtu. Prek një klip për ta zgjedhur, pastaj <b>Prit</b>, <b>Fshi</b> ose tërhiqe për ta renditur. <b>Shto</b> fut klipe te koka.</div>
   <input type="file" data-r="file" accept="video/*,image/*" multiple hidden>`;
   const q=r=>R.querySelector(`[data-r="${r}"]`);
+  const clipBar=q("clip"),muteB=q("mute");
   const sc=q("scroll"),inner=q("inner"),ruler=q("ruler"),heads=q("heads"),lrows=q("lrows"),rv1=q("v1"),ra1=q("a1"),ph=q("ph"),ins=q("ins"),fileIn=q("file");
   const btn=a=>R.querySelector(`[data-a="${a}"]`);
   const tc=s=>{const f=Math.floor(Math.max(0,s)*FPS+1e-6),fr=f%FPS,ss=Math.floor(f/FPS)%60,mm=Math.floor(f/FPS/60)%60,hh=Math.floor(f/FPS/3600);
@@ -301,10 +317,11 @@ function createTimeline(o){
       const m=media.get(c.m),x=xOf(st[i]),w=Math.max(2,len(c)*pps),s=sel.has(c.id);
       const d=document.createElement("div");d.className="tl-c"+(m.kind==="image"?" img":"")+(s?" sel":"");d.dataset.id=c.id;
       d.style.left=x+"px";d.style.width=w+"px";if(m.thumb)d.style.backgroundImage=`url(${m.thumb})`;
-      d.innerHTML=`<span>${esc(m.name)}</span><i class="tl-tr l"></i><i class="tl-tr r"></i>`;
+      d.innerHTML=`<span>${sp(c)!==1?`<b class="tl-sp">${String(sp(c)).replace(/^0/,"")}×</b> `:""}${esc(m.name)}</span><i class="tl-tr l"></i><i class="tl-tr r"></i>`;
       rv1.appendChild(d);
-      const a=document.createElement("div");a.className="tl-a"+(s?" sel":"")+(m.kind==="image"?" none":"");a.dataset.id=c.id;a.style.left=x+"px";a.style.width=w+"px";
-      if(m.kind==="video"){const cw=Math.min(Math.ceil(w),4000),cn=document.createElement("canvas");cn.width=cw;cn.height=30;a.appendChild(cn);drawWave(cn,m,c,wave)}
+      const a=document.createElement("div");a.className="tl-a"+(s?" sel":"")+(m.kind==="image"||c.mute?" none":"");a.dataset.id=c.id;a.style.left=x+"px";a.style.width=w+"px";
+      if(m.kind==="video"&&c.mute)a.innerHTML=`<span class="tl-nos">${ic.sndOff} Pa zë</span>`;
+      else if(m.kind==="video"){const cw=Math.min(Math.ceil(w),4000),cn=document.createElement("canvas");cn.width=cw;cn.height=30;a.appendChild(cn);drawWave(cn,m,c,wave)}
       ra1.appendChild(a);
     });
     /* keyframes (the picture's position and zoom) as diamonds along V1; tap one to jump to it */
@@ -319,13 +336,39 @@ function createTimeline(o){
   }
   /* selection changes only flip classes: rebuilding the clip under a finger would swallow the tap on phones */
   function paintSel(){
-    R.querySelectorAll(".tl-c,.tl-a").forEach(e=>e.classList.toggle("sel",sel.has(+e.dataset.id)));
+    R.querySelectorAll(".tl-c").forEach(e=>e.classList.toggle("sel",sel.has(+e.dataset.id)&&!asel));
+    R.querySelectorAll(".tl-a").forEach(e=>e.classList.toggle("sel",sel.has(+e.dataset.id)));
     R.querySelectorAll(".tl-l").forEach(e=>e.classList.toggle("sel",lsel===e.dataset.l));
     const l=layers().find(l=>l.id===lsel);
     btn("del").disabled=locked||!(sel.size||(l&&l.toggle&&l.on));
+    btn("del").title=sel.size&&asel?"Fshi zërin e klipit (videoja mbetet)":"Fshi të zgjedhurën (Delete)";
+    paintClip();
   }
-  function selectClips(ids){sel=new Set(ids);if(sel.size)lsel=null;paintSel()}
-  function selectLayer(id){lsel=id;if(id!=null)sel.clear();paintSel();o.onLayerSelect&&o.onLayerSelect(id)}
+  /* the strip for the selected clips: speed, and removing / bringing back their sound */
+  function paintClip(){
+    const cs=clips.filter(c=>sel.has(c.id)),vids=cs.filter(c=>media.get(c.m).kind==="video");
+    clipBar.hidden=!cs.length;if(!cs.length)return;
+    const same=vids.length&&vids.every(c=>sp(c)===sp(vids[0]))?sp(vids[0]):null;
+    clipBar.querySelectorAll("[data-s]").forEach(b=>{b.setAttribute("aria-pressed",String(+b.dataset.s===same));b.disabled=locked||!vids.length});
+    const allOff=vids.length&&vids.every(c=>c.mute);
+    muteB.innerHTML=`${allOff?ic.snd:ic.sndOff}<span>${allOff?"Rikthe zërin":"Fshi zërin"}</span>`;
+    muteB.title=allOff?"Ktheje zërin e klipit":"Hiq zërin e klipit, videoja mbetet";muteB.disabled=locked||!vids.length;
+    clipBar.querySelector(".tl-cl").textContent=vids.length?"Shpejtësia":"Foto: pa shpejtësi dhe zë";
+  }
+  function setSpeed(s){
+    const vs=clips.filter(c=>sel.has(c.id)&&media.get(c.m).kind==="video");if(!vs.length)return;
+    const before=snap(),st=starts(),first=clips.findIndex(c=>vs.includes(c));
+    vs.forEach(c=>{c.speed=s;if(s===1)delete c.speed});
+    time=st[first];commit(before);
+    o.status&&o.status(`Shpejtësia ${String(s).replace(/^0/,"")}× · kohëzgjatja ${tc(total()).slice(3,8)}`);
+  }
+  function setMute(off){
+    const vs=clips.filter(c=>sel.has(c.id)&&media.get(c.m).kind==="video");if(!vs.length)return;
+    const before=snap();vs.forEach(c=>{if(off)c.mute=true;else delete c.mute});commit(before);
+    o.status&&o.status(off?"Zëri u hoq; videoja mbetet.":"Zëri u rikthye.");
+  }
+  function selectClips(ids,onA=false){sel=new Set(ids);asel=onA&&sel.size>0;if(sel.size)lsel=null;paintSel()}
+  function selectLayer(id){lsel=id;if(id!=null){sel.clear();asel=false}paintSel();o.onLayerSelect&&o.onLayerSelect(id)}
   function drawWave(cn,m,c,col){
     const x=cn.getContext("2d"),w=cn.width,h=cn.height;x.clearRect(0,0,w,h);
     x.fillStyle=col;
@@ -363,6 +406,7 @@ function createTimeline(o){
   }
   function lockUI(on){locked=on;R.classList.toggle("busy",on);const p=btn("play");p.innerHTML=on?ic.pause:ic.play;p.setAttribute("aria-label",on?"Ndalo":"Luaj");render()}
   function deleteSel(){
+    if(sel.size&&asel){const vs=clips.filter(c=>sel.has(c.id)&&media.get(c.m).kind==="video");if(vs.some(c=>!c.mute))setMute(true);return}
     if(sel.size)return removeSel();
     const l=layers().find(l=>l.id===lsel);
     if(l&&l.toggle&&l.on){const before=snap();o.onLayerToggle(l.id,false);lsel=null;commit(before)}
@@ -382,6 +426,11 @@ function createTimeline(o){
     else if(a==="zin")zoom(1.5);else if(a==="zout")zoom(1/1.5);
   });
   fileIn.onchange=()=>{addFiles(fileIn.files,"playhead");fileIn.value=""};
+  clipBar.addEventListener("click",e=>{
+    const b=e.target.closest("button");if(!b||b.disabled||locked)return;
+    if(b.dataset.s)setSpeed(+b.dataset.s);
+    else if(b===muteB){const vs=clips.filter(c=>sel.has(c.id)&&media.get(c.m).kind==="video");setMute(!vs.every(c=>c.mute))}
+  });
   /* the eye in a track head shows or hides that layer */
   heads.addEventListener("click",e=>{
     const b=e.target.closest("[data-eye]");if(!b||locked)return;
@@ -410,14 +459,15 @@ function createTimeline(o){
     const L=lay?layers().find(l=>l.id===id):null,i=el?clips.findIndex(c=>c.id===id):-1,c=clips[i];
     if((lay&&!L)||(el&&!c))return;
     if(el&&tool==="razor"){e.preventDefault();show(tOf(px));splitAt(tOf(px));return}
-    const wasSel=lay?lsel===id:el?sel.has(id):false;
-    if(el&&(e.shiftKey||e.metaKey||e.ctrlKey)){const s=new Set(sel);wasSel?s.delete(id):s.add(id);selectClips(s);return}
+    const onA=!!(el&&el.classList.contains("tl-a"));
+    const wasSel=lay?lsel===id:el?sel.has(id)&&asel===onA:false;
+    if(el&&(e.shiftKey||e.metaKey||e.ctrlKey)){const s=new Set(sel);sel.has(id)?s.delete(id):s.add(id);selectClips(s,onA);return}
 
     /* a tap: select (or turn on an off layer), or move the playhead on empty track space */
     const tap=()=>{
       if(lay){if(!L.on){const before=snap();o.onLayerToggle(id,true);lsel=id;commit(before);o.onLayerSelect&&o.onLayerSelect(id)}
         else if(wasSel)show(tOf(px));else selectLayer(id)}
-      else if(el){if(wasSel){if(sel.size>1)selectClips([id]);else show(tOf(px))}else selectClips([id])}
+      else if(el){if(wasSel){if(sel.size>1)selectClips([id],onA);else show(tOf(px))}else selectClips([id],onA)}
       else if(e.target.closest(".tl-row")){if(sel.size||lsel)selectLayer(null);show(tOf(px))}
     };
     const canDrag=(lay&&L.on&&(L.move||(trim&&L.resize)))||(el&&!!c);
@@ -431,7 +481,7 @@ function createTimeline(o){
       return;
     }
     if(!canDrag){tap();return}
-    if(!wasSel){if(lay)selectLayer(id);else selectClips([id])}
+    if(!wasSel){if(lay)selectLayer(id);else selectClips([id],onA)}
     e.preventDefault();try{inner.setPointerCapture(e.pointerId)}catch(_){}
     const before=snap(),x0=e.clientX;let moved=false,dropAt=null;
     const m=c&&media.get(c.m),o0=c&&{in:c.in,out:c.out},st0=c?starts()[i]:0,l0=L&&{start:L.start,len:L.end-L.start};
@@ -448,10 +498,10 @@ function createTimeline(o){
         o.onLayer(id,{start:s,len:n});render();                // the layers around it follow (the title ends where the name starts)
         show(trim==="r"?s+n-0.5:s+Math.min(1.2,n));
       }else if(trim==="l"){
-        if(m.kind==="video")c.in=Math.max(0,Math.min(o0.out-MIN,o0.in+dt));else c.out=Math.max(MIN,Math.min(IMG_MAX,o0.out-dt));
+        if(m.kind==="video")c.in=Math.max(0,Math.min(o0.out-MIN*sp(c),o0.in+dt*sp(c)));else c.out=Math.max(MIN,Math.min(IMG_MAX,o0.out-dt));
         render();show(st0);
       }else if(trim==="r"){
-        c.out=m.kind==="video"?Math.max(c.in+MIN,Math.min(m.dur,o0.out+dt)):Math.max(MIN,Math.min(IMG_MAX,o0.out+dt));
+        c.out=m.kind==="video"?Math.max(c.in+MIN*sp(c),Math.min(m.dur,o0.out+dt*sp(c))):Math.max(MIN,Math.min(IMG_MAX,o0.out+dt));
         render();show(st0+len(c)-1/FPS);
       }else{
         /* reorder: drop between clips, at the boundary nearest the pointer */
@@ -501,7 +551,7 @@ function createTimeline(o){
     else if(k==="arrowleft"||k==="arrowright"){e.preventDefault();show(time+(k==="arrowleft"?-1:1)*(e.shiftKey?1:1/FPS))}
     else if(k==="home"){show(0)}else if(k==="end"){show(total())}
     else if(k==="="||k==="+")zoom(1.5);else if(k==="-")zoom(1/1.5);
-    else if(k==="escape"){selectLayer(null)}
+    else if(k==="escape"){selectLayer(null);selectClips([])}
   });
 
   return {
