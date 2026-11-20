@@ -33,6 +33,11 @@
 
   <form class="panel" id="form" autocomplete="off">
     <div class="group">
+      <span class="lab">Kategoria</span>
+      <div class="chips" id="modes"></div>
+    </div>
+
+    <div class="group">
       <span class="lab">Prezantuesi</span>
       <div class="chips" id="people"></div>
       <label for="name" style="margin-top:6px">Emri</label>
@@ -74,14 +79,17 @@
    presenter name · grain (overlay, 35%). Box geometry follows "Albanian Post - Rregullo kutite.jsx". */
 const W=1080,H=1920;
 const cv=$("cv"),ctx=cv.getContext("2d");
-const S={photo:null,ox:0,oy:0,who:"dreni"};
+const S={photo:null,ox:0,oy:0,who:"dreni",mode:"standard"};
 const PEOPLE={
   andi:{label:"Andi",name:"ANDI HAXHIU"},altina:{label:"Altina",name:"ALTINA MARMULLAKU"},armati:{label:"Armati",name:"ARMAT MATOSHI"},
   dreni:{label:"Dreni",name:"DRENI HIMBEQA"},anmo:{label:"Anmo",name:"ANNAMOREA TIARA NIXHA"},emira:{label:"Emira",name:"EMIRA MULAKU"},
-  joni:{label:"Joni",name:"JON HAXHIU"}
+  joni:{label:"Joni",name:"JON HAXHIU"},nuza:{label:"Nuza",name:"ELION NUZA"}
 };
+/* Standard = the red PSD look; Sporti = yellow newspaper wall (sport-*.webp), presenter Nuza by default */
+const MODES={standard:{label:"Standard",accent:"#cc2424",ink:"#fff"},sporti:{label:"Sporti",accent:"#fadb3c",ink:"#29261f",who:"nuza"}};
 const img=src=>{const i=new Image();i.onload=()=>draw();i.src=src;return i};
 const BASE=img("thumb-base.webp"),TOP=img("thumb-top.webp"),MASK=img("thumb-mask.png"),GRAIN=img("thumb-grain.webp");
+const SBASE=img("sport-base.webp"),SMASK=img("sport-mask.png"),STOP=img("sport-top.webp");
 const CUT={};Object.keys(PEOPLE).forEach(k=>CUT[k]=img(`p-${k}.webp`));
 const ok=i=>i.complete&&i.naturalWidth>0;
 
@@ -122,8 +130,37 @@ function headLine(l,x,size){
   }
 }
 
+/* Sporti: the topic photo is printed into the newspaper like a photocopy — grey, hard contrast, a little
+   noise — and multiplied onto the yellow paper inside a soft torn mask (same recipe as the approved mock-up) */
+const SPORT_BOX={x:-60,y:250,w:640,h:900},SR={x:0,y:250,w:580,h:900};
+let sNoise=null;
+function sportPhoto(){
+  const r=coverRect(S,S.photo.width,S.photo.height,SPORT_BOX.w,SPORT_BOX.h,+$("zoom").value/100);
+  pctx.globalCompositeOperation="source-over";pctx.clearRect(0,0,W,H);
+  pctx.save();pctx.beginPath();pctx.rect(SR.x,SR.y,SR.w,SR.h);pctx.clip();
+  pctx.drawImage(S.photo,SPORT_BOX.x+r.x,SPORT_BOX.y+r.y,r.w,r.h);pctx.restore();
+  const id=pctx.getImageData(SR.x,SR.y,SR.w,SR.h),d=id.data,n=SR.w*SR.h,lum=new Float32Array(n),hist=new Uint32Array(256);
+  for(let i=0,j=0;i<n;i++,j+=4){const v=0.299*d[j]+0.587*d[j+1]+0.114*d[j+2];lum[i]=v;hist[v|0]++}
+  let lo=0,hi=255,acc=0;const cut=n*0.02;
+  for(;lo<255;lo++){acc+=hist[lo];if(acc>cut)break}
+  acc=0;for(;hi>0;hi--){acc+=hist[hi];if(acc>cut)break}
+  const span=Math.max(1,hi-lo);let mean=0;
+  for(let i=0;i<n;i++){const v=Math.max(0,Math.min(255,(lum[i]-lo)*255/span));lum[i]=v;mean+=v}
+  mean/=n;
+  if(!sNoise){sNoise=new Float32Array(n);for(let i=0;i<n;i++){const u=Math.random()||1e-9,w=Math.random();sNoise[i]=Math.sqrt(-2*Math.log(u))*Math.cos(6.2832*w)*18}}
+  for(let i=0,j=0;i<n;i++,j+=4){
+    const t=Math.max(0,Math.min(255,(lum[i]-mean)*2.3+150+sNoise[i]))/255;
+    d[j]=30+222*t;d[j+1]=28+222*t;d[j+2]=26+218*t;d[j+3]=255;
+  }
+  pctx.putImageData(id,SR.x,SR.y);
+  pctx.globalCompositeOperation="destination-in";pctx.drawImage(SMASK,0,0,W,H);pctx.globalCompositeOperation="source-over";
+  ctx.globalCompositeOperation="multiply";ctx.drawImage(photoCv,0,0);ctx.globalCompositeOperation="source-over";
+}
+
 function draw(){
   ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
+  const sport=S.mode==="sporti";
+  if(sport){drawSport();return}
   ctx.fillStyle="#2a2523";ctx.fillRect(0,0,W,H);
   if(ok(BASE))ctx.drawImage(BASE,0,0,W,H);
 
@@ -141,21 +178,7 @@ function draw(){
   if(ok(TOP))ctx.drawImage(TOP,0,0,W,H);
   const cut=CUT[S.who];if(cut&&ok(cut))ctx.drawImage(cut,0,0,W,H);
 
-  /* headline: one red box per line, 0.2×size left of the ink, 0.19×size right of it */
-  const size=+$("size").value,pitch=size*1.2,boxH=size*0.98;
-  const lines=headLines(size);
-  const top=Math.min(TOP_Y,LOWEST-(lines.length-1)*pitch-boxH)+(+$("lift").value);
-  ctx.textBaseline="alphabetic";
-  lines.forEach((l,i)=>{
-    const m=ctx.measureText(l),y=top+i*pitch;
-    const inkR=TEXT_X+(m.actualBoundingBoxRight)*HEAD_SX;
-    ctx.fillStyle=RED;ctx.fillRect(Math.round(TEXT_X-size*0.2),Math.round(y),Math.round(inkR+size*0.19-(TEXT_X-size*0.2)),Math.round(boxH));
-  });
-  ctx.fillStyle="#fff";
-  lines.forEach((l,i)=>{
-    const y=top+i*pitch+size*0.85,m=ctx.measureText(l);
-    ctx.save();ctx.translate(TEXT_X,y);ctx.scale(HEAD_SX,1);headLine(l,m.actualBoundingBoxLeft,size);ctx.restore();
-  });
+  drawHeadline(RED,"#fff",TOP_Y);
 
   /* presenter name, right-aligned under the cut-out */
   const name=$("name").value.trim().toUpperCase();
@@ -164,23 +187,66 @@ function draw(){
     const w=ctx.measureText(name).width*NAME_SX;
     ctx.save();ctx.translate(NAME_RIGHT-w,NAME_BASE);ctx.scale(NAME_SX,1);ctx.fillStyle="#fff";ctx.fillText(name,0,0);ctx.restore();
   }
+  drawGrain(89/255);
+}
 
-  /* film grain */
+function drawSport(){
+  ctx.fillStyle="#d8c255";ctx.fillRect(0,0,W,H);
+  if(ok(SBASE))ctx.drawImage(SBASE,0,0,W,H);
+  if(S.photo&&ok(SMASK))sportPhoto();
+  else if(!S.photo){
+    ctx.fillStyle="rgba(41,38,31,.55)";ctx.font='600 34px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
+    ctx.fillText("Fotoja e temës",270,700);ctx.textAlign="left";
+  }
+  const cut=CUT[S.who];if(cut&&ok(cut))ctx.drawImage(cut,0,0,W,H);
+  if(ok(STOP))ctx.drawImage(STOP,0,0,W,H);
+  drawHeadline("#29261f","#fadb3c",1100);
+  /* name centred on the torn yellow strip */
+  const name=$("name").value.trim().toUpperCase();
+  if(name){
+    ctx.font=`900 74px "Inter Black","Inter",Helvetica,Arial,sans-serif`;
+    const w=ctx.measureText(name).width*NAME_SX;
+    ctx.save();ctx.translate(540-w/2,1790);ctx.scale(NAME_SX,1);ctx.fillStyle="#29261f";ctx.fillText(name,0,0);ctx.restore();
+  }
+  drawGrain(0.25);
+}
+
+function drawGrain(a){
   if(ok(GRAIN)){
     grainPat=grainPat||ctx.createPattern(GRAIN,"repeat");
-    ctx.globalCompositeOperation="overlay";ctx.globalAlpha=89/255;ctx.fillStyle=grainPat;ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation="overlay";ctx.globalAlpha=a;ctx.fillStyle=grainPat;ctx.fillRect(0,0,W,H);
     ctx.globalCompositeOperation="source-over";ctx.globalAlpha=1;
   }
 }
 
-function paintPeople(){[...$("people").children].forEach(b=>{const on=b.dataset.k===S.who;b.setAttribute("aria-pressed",on);
-  b.style.background=on?RED:"";b.style.borderColor=on?RED:"";b.style.color=on?"#fff":""})}
+/* headline: one box per line, 0.2×size left of the ink, 0.19×size right of it */
+function drawHeadline(boxCol,inkCol,topY){
+  const size=+$("size").value,pitch=size*1.2,boxH=size*0.98;
+  const lines=headLines(size);
+  const top=Math.min(topY,LOWEST-(lines.length-1)*pitch-boxH)+(+$("lift").value);
+  ctx.textBaseline="alphabetic";
+  lines.forEach((l,i)=>{
+    const m=ctx.measureText(l),y=top+i*pitch;
+    const inkR=TEXT_X+(m.actualBoundingBoxRight)*HEAD_SX;
+    ctx.fillStyle=boxCol;ctx.fillRect(Math.round(TEXT_X-size*0.2),Math.round(y),Math.round(inkR+size*0.19-(TEXT_X-size*0.2)),Math.round(boxH));
+  });
+  ctx.fillStyle=inkCol;
+  lines.forEach((l,i)=>{
+    const y=top+i*pitch+size*0.85,m=ctx.measureText(l);
+    ctx.save();ctx.translate(TEXT_X,y);ctx.scale(HEAD_SX,1);headLine(l,m.actualBoundingBoxLeft,size);ctx.restore();
+  });
+}
+
+function paintChips(box,cur){const m=MODES[S.mode];[...box.children].forEach(b=>{const on=b.dataset.k===cur;b.setAttribute("aria-pressed",on);
+  b.style.background=on?m.accent:"";b.style.borderColor=on?m.accent:"";b.style.color=on?m.ink:""})}
+function paintPeople(){paintChips($("people"),S.who);paintChips($("modes"),S.mode);
+  document.documentElement.style.setProperty("--red",MODES[S.mode].accent);document.documentElement.style.setProperty("--red-ink",MODES[S.mode].ink)}
 function sync(){
   $("zoomOut").textContent=$("zoom").value+"%";
   $("sizeOut").textContent=$("size").value;
   $("liftOut").textContent=$("lift").value;
   paintPeople();draw();
-  store("ap-thumb-draft",JSON.stringify({who:S.who,name:$("name").value,title:$("title").value,size:$("size").value,lift:$("lift").value}));
+  store("ap-thumb-draft",JSON.stringify({mode:S.mode,who:S.who,name:$("name").value,title:$("title").value,size:$("size").value,lift:$("lift").value}));
 }
 
 function setPhoto(file){
@@ -208,8 +274,10 @@ $("form").addEventListener("submit",async e=>{
 (function init(){
   Object.entries(PEOPLE).forEach(([k,p])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=p.label;b.dataset.k=k;
     b.onclick=()=>{S.who=k;$("name").value=p.name;sync()};$("people").appendChild(b)});
+  Object.entries(MODES).forEach(([k,m])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=m.label;b.dataset.k=k;
+    b.onclick=()=>{if(S.mode===k)return;S.mode=k;S.ox=0;S.oy=0;if(m.who){S.who=m.who;$("name").value=PEOPLE[m.who].name}sync()};$("modes").appendChild(b)});
   $("name").value=PEOPLE[S.who].name;
-  try{const d=JSON.parse(load("ap-thumb-draft")||"null");if(d){if(PEOPLE[d.who])S.who=d.who;$("name").value=d.name??PEOPLE[S.who].name;
+  try{const d=JSON.parse(load("ap-thumb-draft")||"null");if(d){if(MODES[d.mode])S.mode=d.mode;if(PEOPLE[d.who])S.who=d.who;$("name").value=d.name??PEOPLE[S.who].name;
     $("title").value=d.title??"";$("size").value=d.size??100;$("lift").value=d.lift??0}}catch(e){}
   sync();
   Promise.all([
