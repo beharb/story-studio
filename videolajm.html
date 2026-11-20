@@ -28,6 +28,9 @@
 .rf-btn svg{width:18px;height:18px;flex:none}
 .rf-btn[aria-pressed=true]{background:var(--red);border-color:var(--red);color:var(--red-ink)}
 .rf progress{height:6px}
+.split{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+.split[hidden]{display:none}
+.split .lab{margin-bottom:-2px}
 .nc-del{flex:none;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--fg);cursor:pointer;padding:0;font-size:18px;line-height:1}
 .nc-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border-style:dashed}
 .nc-free-row{display:flex;align-items:center;gap:10px}
@@ -62,12 +65,22 @@
   </div>
 
   <form class="panel" id="form" autocomplete="off">
-    <div class="group">
+    <div class="group" id="mediaGroup">
       <span class="lab">Videoja</span>
+      <div class="chips" id="layChips" role="group" aria-label="Pamja"><button type="button" class="chip" data-lay="single">Një ekran</button><button type="button" class="chip" data-lay="split">Ekran i ndarë</button></div>
       <div class="drop" id="drop" tabindex="0" role="button"><b>Ngarko videot</b> (ose foto)<br>ose tërhiqi këtu · shtohen në fund të kohës</div>
       <input type="file" id="file" accept="video/*,image/*" multiple hidden>
       <div class="small" id="mediaInfo"></div>
-      <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
+      <div class="split" id="splitBox" hidden>
+        <span class="lab">Poshtë</span>
+        <div class="drop" id="dropB" tabindex="0" role="button"><b>Ngarko videon e poshtme</b> (ose foto)<br>del në gjysmën e poshtme të ekranit</div>
+        <input type="file" id="fileB" accept="video/*,image/*" hidden>
+        <div class="small" id="bInfo"></div>
+        <div class="row"><span class="small">Zmadhimi</span><input type="range" id="zoomB" min="100" max="300" step="1" value="100" aria-label="Zmadhimi i videos poshtë"><output id="zoomBOut">100%</output></div>
+        <span class="small">Zëri në video</span>
+        <div class="chips" id="sndChips"></div>
+      </div>
+      <div class="row"><span class="small" id="zoomLab">Zmadhimi</span><input type="range" id="zoom" min="100" max="300" step="1" value="100"><output id="zoomOut">100%</output></div>
       <div class="row"><button type="button" class="vol-btn" id="mute" aria-pressed="false" title="Pa zë" aria-label="Pa zë"></button><span class="small">Zëri</span><input type="range" id="vol" min="0" max="200" step="1" value="100" aria-label="Zëri i videos"><output id="volOut">100%</output></div>
       <div class="kf">
         <span class="small"><b>Keyframes</b> · pozicioni dhe zmadhimi</span>
@@ -169,7 +182,7 @@ const seg=(t,a,b)=>clamp((t-a)/(b-a));
 const ease=v=>1-Math.pow(1-clamp(v),3);
 
 /* how long the finished video is (the timeline's length), and when the graphics have finished leaving */
-const emptyLength=()=>Math.max(S.len==="end"?10:S.len+1,...ncOn().map(c=>c.start+c.len+0.2));
+const emptyLength=()=>Math.max(S.len==="end"?10:S.len+1,...ncOn().map(c=>c.start+c.len+0.2),SPLIT.on&&SB.m?SB.start+bLen():0);
 function total(){return TL.hasClips()?TL.total():emptyLength()}
 function gEnd(){const T=total(),e=S.len==="end"?T-0.15:Math.min(S.len,T-0.15),on=ncOn();return on.length?Math.min(e,Math.min(...on.map(c=>c.start))-0.05):e}
 
@@ -259,7 +272,7 @@ function kfApply(t){
 /* keep the offset inside the picture at the current zoom (as coverRect does when drawing) */
 function clampFrame(){
   const f=TL.frame();if(!f||S.auto)return;
-  coverRect(S,f.w,f.h,W,H,+$("zoom").value/100);
+  coverRect(S,f.w,f.h,W,topH(),+$("zoom").value/100);
 }
 function kfSet(t){
   clampFrame();
@@ -285,25 +298,105 @@ function kfTick(){
   document.querySelectorAll(".tl-kf").forEach(e=>e.classList.toggle("on",Math.abs(+e.dataset.t-TL.time)<KF_EPS));
 }
 
-function drawMedia(){
-  const z=+$("zoom").value/100;
-  const f=TL.frame();
-  if(f){const r=coverRect(autoFrame(f,z)||S,f.w,f.h,W,H,z);ctx.drawImage(f.src,r.x,r.y,r.w,r.h);return}
-  ctx.fillStyle="#3b3d41";ctx.fillRect(0,0,W,H);
+/* ---------- Split screen: the timeline's video in the top half, a second video (or photo) in the bottom half.
+   The lower one plays on the same clock from SB.start (its own track, movable and trimmable at the end);
+   before it starts it shows its first frame, after it ends its last. It has its own framing (drag, zoom). ---------- */
+const SPLIT={on:false,sound:"both"},SB={m:null,ox:0,oy:0,start:0,len:null};
+const SOUNDS=[["both","Të dy"],["top","Lart"],["bottom","Poshtë"]];
+const topH=()=>SPLIT.on?H/2:H;
+const bLen=()=>SB.m?(SB.m.kind==="image"?SB.len??10:Math.min(SB.len??SB.m.dur,SB.m.dur)):0;
+const bVideo=()=>SPLIT.on&&SB.m&&SB.m.kind==="video"?SB.m.el:null;
+const bTime=t=>Math.max(0,Math.min(t-SB.start,bLen(),SB.m.dur-0.04));
+function placeholder(y0,h,text){
+  ctx.fillStyle="#3b3d41";ctx.fillRect(0,y0,W,h);
   ctx.fillStyle="#56585d";ctx.font='500 44px "IBM Plex Sans",sans-serif';ctx.textAlign="center";
-  ctx.fillText(TL.hasClips()?"Duke ngarkuar videon…":"Ngarko një video",W/2,H*0.33);ctx.textAlign="left";
+  ctx.fillText(text,W/2,y0+h*(SPLIT.on?0.5:0.33));ctx.textAlign="left";
 }
+function drawMedia(t){
+  const z=+$("zoom").value/100,TH=topH(),f=TL.frame();
+  ctx.save();if(SPLIT.on){ctx.beginPath();ctx.rect(0,0,W,TH);ctx.clip()}
+  if(f){const r=coverRect(autoFrame(f,z,TH)||S,f.w,f.h,W,TH,z);ctx.drawImage(f.src,r.x,r.y,r.w,r.h)}
+  else placeholder(0,TH,TL.hasClips()?"Duke ngarkuar videon…":SPLIT.on?"Ngarko videon e sipërme":"Ngarko një video");
+  ctx.restore();
+  if(!SPLIT.on)return;
+  bSync(t);
+  ctx.save();ctx.beginPath();ctx.rect(0,TH,W,H-TH);ctx.clip();
+  const m=SB.m,src=m&&(m.kind==="image"?m.img:m.el.readyState>=2?m.el:null);
+  if(src){const r=coverRect(SB,m.w,m.h,W,H-TH,+$("zoomB").value/100);ctx.drawImage(src,r.x,TH+r.y,r.w,r.h)}
+  else placeholder(TH,H-TH,m?"Duke ngarkuar videon…":"Ngarko videon e poshtme");
+  ctx.restore();
+  ctx.fillStyle=$("color").value;ctx.fillRect(0,TH-3,W,6);           // the seam, in the category colour
+}
+/* keep the lower video on the timeline's clock: playing along while the timeline plays, parked on the right frame otherwise */
+function bSync(t){
+  const v=bVideo();if(!v||!isFinite(SB.m.dur))return;
+  const want=bTime(t),live=TL.isPlaying()&&t>=SB.start&&t<SB.start+bLen()-0.05;
+  if(live){if(v.paused){v.currentTime=want;v.play().catch(()=>{})}else if(Math.abs(v.currentTime-want)>0.3)v.currentTime=want}
+  else{if(!v.paused)v.pause();if(!v.seeking&&Math.abs(v.currentTime-want)>0.04)v.currentTime=want}
+}
+function bSound(){
+  const v=SB.m&&SB.m.kind==="video"?SB.m.el:null;
+  TL.setMainSound(!SPLIT.on||SPLIT.sound!=="bottom");
+  if(v){const on=SPLIT.on&&SPLIT.sound!=="top";if(v._g)v._g.gain.value=on?1:0;else v.muted=!on}
+}
+/* iOS lets a video play with sound only after play() inside a tap; also wire it into the volume and the recording */
+function bUnlock(){
+  const v=bVideo();if(!v)return;
+  TL.addSource(v);v.muted=false;bSound();
+  try{const p=v.play();if(p)p.then(()=>{if(!TL.isPlaying())v.pause()}).catch(()=>{})}catch(e){}
+}
+async function setBottom(file){
+  if(!file)return;if(busy){$("bInfo").textContent="Ndale videon së pari, pastaj ngarkoje.";return}
+  const url=URL.createObjectURL(file),name=file.name||"video",img=file.type.startsWith("image/")||/\.(jpe?g|png|heic|webp)$/i.test(name);
+  $("bInfo").textContent="Duke hapur…";
+  try{
+    let m;
+    if(img){
+      const i=new Image();i.src=url;await i.decode();m={kind:"image",img:i,w:i.naturalWidth,h:i.naturalHeight,dur:Infinity,name,url};
+    }else{
+      const v=document.createElement("video");v.setAttribute("playsinline","");v.playsInline=true;v.muted=true;v.preload="auto";v.className="tl-dec";
+      document.body.appendChild(v);v.src=url;v.load();
+      await new Promise((res,rej)=>{v.addEventListener("loadedmetadata",res,{once:true});v.addEventListener("error",rej,{once:true});setTimeout(()=>rej(new Error("koha")),20000)});
+      if(!isFinite(v.duration))throw new Error("video");
+      v.addEventListener("seeked",()=>{if(!TL.isPlaying()&&!busy)draw(TL.time)});
+      v.addEventListener("loadeddata",()=>{if(!busy)draw(TL.time)});
+      m={kind:"video",el:v,w:v.videoWidth,h:v.videoHeight,dur:v.duration,name,url};
+    }
+    const old=SB.m;if(old){if(old.el){old.el.pause();old.el.remove()}URL.revokeObjectURL(old.url)}
+    TL.change(()=>{SB.m=m;SB.ox=0;SB.oy=0;SB.start=0;SB.len=null});
+    $("zoomB").value=100;$("frame").classList.add("has-photo");bSound();
+  }catch(e){URL.revokeObjectURL(url);$("bInfo").textContent="Nuk u hap: "+name;return}
+  bInfoText();if(!busy)draw(TL.time);
+}
+function bInfoText(){
+  const m=SB.m;
+  $("bInfo").textContent=!m?"Videoja e sipërme ngarkohet si gjithmonë më lart; kjo del poshtë, në të njëjtën kohë.":
+    m.kind==="image"?`${m.name} · foto`:`${m.name} · ${fmt(bLen())}${TL.hasClips()&&SB.start+bLen()<TL.total()-0.1?" (më e shkurtër se videoja lart: mbetet në kuadrin e fundit)":""}`;
+}
+function setLayout(split){
+  SPLIT.on=split;
+  [...$("layChips").children].forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.lay==="split")===split)));
+  $("splitBox").hidden=!split;$("zoomLab").textContent=split?"Zmadhimi lart":"Zmadhimi";
+  $("drop").innerHTML=split?"<b>Ngarko videot për lart</b> (ose foto)<br>ose tërhiqi këtu · shtohen në fund të kohës":"<b>Ngarko videot</b> (ose foto)<br>ose tërhiqi këtu · shtohen në fund të kohës";
+  [...$("sndChips").children].forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.s===SPLIT.sound)));
+  if(!split&&SB.m&&SB.m.el)SB.m.el.pause();
+  bSound();bInfoText();
+  if(!S.auto&&!busy)$("hint").textContent=split?SPLIT_HINT:HINT;
+  store("ap-video-split",JSON.stringify(SPLIT));
+  TL.render();if(!busy)draw(TL.time);
+}
+const SPLIT_HINT="Tërhiqe videon lart ose poshtë për ta lëvizur secilën më vete.";
 
 /* ---------- Auto re-frame: the subject's face sits in the middle across, at RF_Y down (clear of the lower-third graphics);
    with it on, dragging the picture only nudges the framing (S.ox/S.oy become an offset on top of the tracking) ---------- */
 const RF=createReframer(),RF_Y=0.38,RF_HINT="Auto re-frame: personi ndiqet vetë. Tërhiqe videon për ta zhvendosur pak.";
 const RF_MOTIONS=[["slow","E qetë"],["normal","Normale"],["fast","E shpejtë"]];
-function autoFrame(f,z){
+function autoFrame(f,z,RH=H){
   if(!S.auto||f.mid==null)return null;
   const p=RF.at(f.mid,f.t);if(!p)return null;
-  const s=Math.max(W/f.w,H/f.h)*z,dw=f.w*s,dh=f.h*s,mx=(dw-W)/2,my=(dh-H)/2;
+  const s=Math.max(W/f.w,RH/f.h)*z,dw=f.w*s,dh=f.h*s,mx=(dw-W)/2,my=(dh-RH)/2;
   S.ox=Math.max(-mx,Math.min(mx,S.ox));S.oy=Math.max(-my,Math.min(my,S.oy));
-  return {ox:(0.5-p.x)*dw+S.ox,oy:H*RF_Y-p.y*dh-(H-dh)/2+S.oy};
+  return {ox:(0.5-p.x)*dw+S.ox,oy:RH*(SPLIT.on?0.45:RF_Y)-p.y*dh-(RH-dh)/2+S.oy};
 }
 let rfTimer=0,rfErr="";
 function rfInfo(p){
@@ -342,7 +435,7 @@ function draw(t=null){
   const k=state(t),col=$("color").value,ink=CATS[S.cat].ink;
   if(KF.length)kfApply(t??TL.time);
   ctx.clearRect(0,0,W,H);ctx.globalAlpha=1;ctx.textBaseline="alphabetic";
-  drawMedia();
+  drawMedia(t??TL.time);
   if(k.panel>0){ctx.globalAlpha=k.panel;const g=ctx.createLinearGradient(0,SHADE_Y,0,H);SHADE_STOPS.forEach(([o,a])=>g.addColorStop(o,`rgba(46,43,44,${a})`));
     ctx.fillStyle=g;ctx.fillRect(0,SHADE_Y,W,H-SHADE_Y);ctx.globalAlpha=1}
   if(LOGO.complete&&LOGO.naturalWidth)ctx.drawImage(LOGO,X,197,197,89);
@@ -406,13 +499,16 @@ const TL=createTimeline({
     ...NCS.map((c,i)=>({id:ncLayer(c),kind:"name",label:ncLabel(i),offLabel:"Shto "+ncLabel(i).toLowerCase(),sub:c.name.trim(),start:c.start,end:c.start+c.len,on:c.on,
       move:true,resize:true,toggle:true,minLen:NC_MIN,minStart:TITLE_MIN,shade:[1,1.95]})).reverse(),
     {id:"title",kind:"title",label:"Titulli",sub:"LAJMET VIDEO",start:0,end:gEnd(),on:true,shade:[2.5,2.1]},
+    ...(SPLIT.on&&SB.m?[{id:"bottom",kind:"bottom",label:"Poshtë",sub:SB.m.name,start:SB.start,end:SB.start+bLen(),on:true,move:true,resize:true,minLen:0.5}]:[]),
   ],
-  onLayer:(id,v)=>{const c=ncOf(id);if(c){c.start=v.start;c.len=v.len;ncInfo();if(!busy)draw(TL.time)}},
+  onLayer:(id,v)=>{
+    if(id==="bottom"){SB.start=Math.max(0,v.start);SB.len=SB.m.kind==="video"?Math.min(v.len,SB.m.dur):v.len;bInfoText();if(!busy)draw(TL.time);return}
+    const c=ncOf(id);if(c){c.start=v.start;c.len=v.len;ncInfo();if(!busy)draw(TL.time)}},
   onLayerToggle:(id,on)=>{const c=ncOf(id);if(c)setNameOn(c,on,true)},
   onLayerSelect:id=>layerPicked(id),
   /* undo/redo: the cards and their timing and place; what is typed in them stays as it is now */
-  layerState:()=>({ncs:NCS.map(c=>({...c,box:null}))}),
-  setLayerState:d=>{if(!d.ncs)return;const now=new Map(NCS.map(c=>[c.id,c]));
+  layerState:()=>({ncs:NCS.map(c=>({...c,box:null})),sb:{ox:SB.ox,oy:SB.oy,start:SB.start,len:SB.len}}),
+  setLayerState:d=>{if(d.sb){Object.assign(SB,d.sb);bInfoText()}if(!d.ncs)return;const now=new Map(NCS.map(c=>[c.id,c]));
     NCS.length=0;d.ncs.forEach(o=>{const c=now.get(o.id);NCS.push({...o,name:c?c.name:o.name,role:c?c.role:o.role})});ncPanel()},
   onChange:()=>{sync();rfKick()},
   onFirstMedia:()=>resetFrame(),
@@ -485,8 +581,9 @@ const HINT=$("hint").textContent;
 function layerPicked(id){
   const c=id&&ncOf(id);
   $("hint").textContent=c?(c.free?NC_FREE_HINT+" Në kohë: tërhiqe shiritin, skaji i djathtë e zgjat.":"Emri: tërhiqe për ta lëvizur, skaji i djathtë e zgjat. Emrin dhe funksionin i ndryshon në panel."):
-    id==="title"?"Titulli: teksti, rubrika dhe data ndryshohen në panel.":S.auto?RF_HINT:HINT;
-  const g=c?ncGroup(c):id==="title"?$("titleGroup"):null;if(!g)return;
+    id==="title"?"Titulli: teksti, rubrika dhe data ndryshohen në panel.":
+    id==="bottom"?"Videoja poshtë: tërhiqe shiritin që të fillojë më vonë; skaji i djathtë e shkurton.":S.auto?RF_HINT:SPLIT.on?SPLIT_HINT:HINT;
+  const g=c?ncGroup(c):id==="title"?$("titleGroup"):id==="bottom"?$("mediaGroup"):null;if(!g)return;
   g.classList.remove("flash");void g.offsetWidth;g.classList.add("flash");
   /* two columns: bring the fields into view; on a phone the panel is far below, so stay at the timeline */
   if(matchMedia("(min-width:821px)").matches){const r=g.getBoundingClientRect();if(r.top<0||r.bottom>innerHeight)g.scrollIntoView({behavior:"smooth",block:"center"})}
@@ -509,6 +606,21 @@ $("drop").onclick=()=>$("file").click();
 $("drop").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("file").click()}};
 $("file").onchange=e=>{addMedia(e.target.files);e.target.value=""};
 ["dragover","drop"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==="drop"&&e.dataTransfer.files.length)addMedia(e.dataTransfer.files)}));
+cv.addEventListener("pointerdown",e=>{
+  if(busy||!SPLIT.on||!SB.m)return;const p=cvPt(e);if(p.y<topH())return;
+  e.stopImmediatePropagation();e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
+  const o0={ox:SB.ox,oy:SB.oy};cv.classList.add("drag");
+  const mv=ev=>{if(ev.pointerId!==e.pointerId)return;const q=cvPt(ev);SB.ox=o0.ox+q.x-p.x;SB.oy=o0.oy+q.y-p.y;draw(TL.time)};
+  const up=ev=>{if(ev.pointerId!==e.pointerId)return;cv.removeEventListener("pointermove",mv);cv.removeEventListener("pointerup",up);cv.removeEventListener("pointercancel",up);cv.classList.remove("drag")};
+  cv.addEventListener("pointermove",mv);cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+});
+$("dropB").onclick=()=>$("fileB").click();
+$("dropB").onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("fileB").click()}};
+$("fileB").onchange=e=>{setBottom(e.target.files[0]);e.target.value=""};
+$("dropB").addEventListener("drop",e=>{e.preventDefault();e.stopPropagation();if(e.dataTransfer.files.length)setBottom(e.dataTransfer.files[0])});
+[...$("layChips").children].forEach(b=>b.onclick=()=>{if(!busy)setLayout(b.dataset.lay==="split")});
+SOUNDS.forEach(([v,label])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=label;b.dataset.s=v;
+  b.onclick=()=>{SPLIT.sound=v;setLayout(SPLIT.on)};$("sndChips").appendChild(b)});
 setupFraming(cv,S,W,$("zoom"),()=>TL.hasClips()&&!busy,()=>{if(KF.length)kfSet(TL.time);draw(TL.time)});
 /* zoom slider or pinch: with keyframes on, it changes the one at the playhead (this runs before the form's own input handler) */
 $("zoom").addEventListener("input",()=>{if(KF.length&&TL.hasClips()&&!busy)kfSet(TL.time)});
@@ -541,22 +653,22 @@ async function run(onFrame){
 function setBusy(on){busy=on;$("saveVid").disabled=on;$("save").disabled=on;kfInfo()}
 /* preview from the playhead (from the start if it is at the end), like Premiere's space bar */
 async function preview(){
-  if(busy)return;TL.unlock();setBusy(true);stopReq=false;
+  if(busy)return;TL.unlock();bUnlock();setBusy(true);stopReq=false;
   const {actx}=TL.audio();if(actx)actx.resume();
   const from=TL.time>=total()-0.05?0:TL.time;
   try{await TL.play({from,to:total(),onFrame:()=>{if(stopReq)TL.stop()}})}catch(e){}
-  setBusy(false);TL.show(TL.time);
+  bVideo()?.pause();setBusy(false);TL.show(TL.time);
 }
 
 $("saveVid").onclick=async()=>{
   if(busy)return;
   const st=$("status");
   if(!cv.captureStream||!window.MediaRecorder){st.textContent="Ky shfletues nuk mund të regjistrojë video. Provo Safari ose Chrome të përditësuar.";return}
-  TL.unlock();setBusy(true);stopReq=false;$("result").hidden=true;
+  TL.unlock();bUnlock();setBusy(true);stopReq=false;$("result").hidden=true;
   if(S.auto&&RF.busy()){st.textContent="Duke përfunduar Auto re-frame…";await RF.idle()}
   const stream=cv.captureStream(30);
   let withAudio=false;
-  if(TL.hasClips()){const {actx,dest}=TL.audio();if(dest){await actx.resume();dest.stream.getAudioTracks().forEach(tr=>{stream.addTrack(tr);withAudio=true})}}
+  if(TL.hasClips()||bVideo()){const {actx,dest}=TL.audio();if(dest){await actx.resume();dest.stream.getAudioTracks().forEach(tr=>{stream.addTrack(tr);withAudio=true})}}
   if(!pickRecType(withAudio)){setBusy(false);st.textContent="Ky shfletues nuk mund të regjistrojë video.";return}
   /* phones: keep the screen awake; leaving the page would stall the recording */
   let lock=null,left=false;try{lock=await navigator.wakeLock?.request("screen")}catch(e){}
@@ -601,7 +713,7 @@ $("form").addEventListener("submit",async e=>{
 /* ---------- controls ---------- */
 function sync(){
   NCS.forEach(c=>{const g=ncGroup(c);if(g){c.name=g.querySelector(".nc-name").value;c.role=g.querySelector(".nc-role").value}});
-  $("zoomOut").textContent=$("zoom").value+"%";
+  $("zoomOut").textContent=$("zoom").value+"%";$("zoomBOut").textContent=$("zoomB").value+"%";
   $("sizeOut").textContent=$("size").value;
   if(S.color)$("color").value=S.color;
   paintCats(S,$("catChips"),$("chips"),$("tag"));
@@ -637,6 +749,7 @@ $("form").addEventListener("change",sync);
   rfInfo();if(S.auto)$("hint").textContent=RF_HINT;
   {const v=parseInt(load("ap-video-vol"),10);if(v>=0&&v<=200){$("vol").value=v;if(v>0)volBack=v}}
   applyVol(false);kfInfo();
+  try{const sp=JSON.parse(load("ap-video-split")||"null");if(sp&&SOUNDS.some(([v])=>v===sp.sound))SPLIT.sound=sp.sound;setLayout(!!(sp&&sp.on))}catch(e){setLayout(false)}
   setupCats(S,$("catChips"),$("chips"),$("tag"),sync);
   sync();TL.show(3);
   Promise.all([

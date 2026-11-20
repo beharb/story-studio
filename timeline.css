@@ -50,6 +50,8 @@
 .tl-l span b{font-weight:600}
 .tl-l.name{background:var(--red);border-color:var(--red)}
 .tl-l.name span{color:var(--red-ink)}
+.tl-l.bottom{background:var(--tl-clip);border-color:var(--tl-clip)}
+.tl-l.bottom span{color:#fff}
 .tl-l.off{background:transparent;border:1.5px dashed var(--line)}
 .tl-l.off span{color:var(--muted)}
 .tl-sh{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--fg) 10%,transparent)}

@@ -200,7 +200,7 @@ function createTimeline(o){
   /* iOS: a video may play with sound only if play() was first called inside a tap; touch both players now */
   function unlock(){els.forEach(v=>{v.muted=false;try{const p=v.play();if(p)p.then(()=>{if(!playing)v.pause()}).catch(()=>{})}catch(e){}})}
   /* the clips' sound goes through one gain node, so the volume is heard in the preview and recorded into the video */
-  let actx=null,dest=null,gain=null,vol=1;
+  let actx=null,dest=null,gain=null,vol=1,mainOn=true;      // mainOn: the timeline's own sound (off when only the split screen's other video is heard)
   function audio(){
     if(actx)return {actx,dest};
     try{
@@ -211,7 +211,13 @@ function createTimeline(o){
     return {actx,dest};
   }
   /* a clip whose sound was removed plays silent; its picture is untouched */
-  function clipSound(v,c){const on=!c.mute;if(v._g)v._g.gain.value=on?1:0;else if(!on)v.muted=true}
+  function clipSound(v,c){const on=!c.mute&&mainOn;if(v._g)v._g.gain.value=on?1:0;else if(!on)v.muted=true}
+  function setMainSound(on){mainOn=!!on;if(cur&&cur.v)clipSound(cur.v,cur.c)}
+  /* another player (the split screen's lower video) into the same volume and recording */
+  function addSource(v){
+    audio();if(!actx)return null;if(v._g)return v._g;
+    try{const g=actx.createGain();actx.createMediaElementSource(v).connect(g);g.connect(gain);v._g=g;return g}catch(e){return null}
+  }
   function setVolume(v){
     vol=Math.max(0,Math.min(2,+v||0));
     if(gain)gain.gain.setTargetAtTime?gain.gain.setTargetAtTime(vol,actx.currentTime,0.015):(gain.gain.value=vol);
@@ -555,7 +561,7 @@ function createTimeline(o){
   });
 
   return {
-    get time(){return time},total,frame,show,play,stop,unlock,audio,setVolume,addFiles,render,fit,
+    get time(){return time},total,frame,show,play,stop,unlock,audio,setVolume,setMainSound,addSource,addFiles,render,fit,
     hasClips:()=>clips.length>0,isPlaying:()=>playing,
     used:()=>clips.map(c=>({m:media.get(c.m),in:c.in,out:c.out})),
     get selectedLayer(){return lsel},selectLayer:id=>{selectLayer(id)},
